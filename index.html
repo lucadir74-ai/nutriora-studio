@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NutriOra Studio</title>
+<meta name="theme-color" content="#1e4d35">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --inchiostro:#14211b;
+    --verde:#1e4d35;
+    --verde-chiaro:#3d7a5a;
+    --carta:#f2f4f1;
+    --superficie:#ffffff;
+    --riga:#dde0d9;
+    --testo-tenue:#5c665f;
+    --ottone:#8a6a2f;
+    --rosso:#8c2f2f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--carta);
+    color:var(--inchiostro);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums}
+  button{font-family:inherit;font-size:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:inherit}
+  input,select{
+    width:100%;padding:9px 11px;border:1px solid var(--riga);
+    border-radius:6px;background:var(--superficie);color:var(--inchiostro);
+  }
+  input:focus,select:focus,button:focus-visible{
+    outline:2px solid var(--verde-chiaro);outline-offset:1px;
+  }
+  label{display:block;font-size:13px;color:var(--testo-tenue);margin-bottom:4px}
+  .btn{
+    padding:9px 16px;border-radius:6px;border:1px solid var(--verde);
+    background:var(--verde);color:#fff;font-weight:500;
+  }
+  .btn:hover{background:var(--verde-chiaro)}
+  .btn.secondario{background:transparent;color:var(--verde);}
+  .btn.secondario:hover{background:#e8ece7}
+  .btn.pericolo{background:transparent;border-color:var(--riga);color:var(--rosso)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .scheda{
+    background:var(--superficie);border:1px solid var(--riga);
+    border-radius:10px;padding:20px;
+  }
+  header.barra{
+    background:var(--verde);color:#fff;padding:14px 20px;
+    display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  }
+  header.barra h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
+  nav.sezioni{display:flex;gap:4px;margin-left:auto}
+  nav.sezioni button{
+    background:transparent;border:none;color:#c8dbcf;
+    padding:7px 14px;border-radius:6px;
+  }
+  nav.sezioni button.attiva{background:rgba(255,255,255,.16);color:#fff}
+  main{max-width:1080px;margin:0 auto;padding:24px 20px 120px}
+  h2{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+  .sottotitolo{color:var(--testo-tenue);font-size:14px;margin:0 0 20px}
+  table{width:100%;border-collapse:collapse}
+  th{
+    text-align:left;font-size:13px;font-weight:500;color:var(--testo-tenue);
+    padding:0 10px 8px;border-bottom:1px solid var(--riga);
+  }
+  td{padding:11px 10px;border-bottom:1px solid var(--riga);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  .destra{text-align:right}
+  .totali{
+    position:fixed;left:0;right:0;bottom:0;background:var(--inchiostro);
+    color:#fff;padding:14px 20px;
+  }
+  .totali .dentro{
+    max-width:1080px;margin:0 auto;display:flex;align-items:baseline;
+    gap:28px;flex-wrap:wrap;
+  }
+  .totali .voce{font-size:13px;color:#9fb0a6}
+  .totali .voce b{display:block;font-size:16px;color:#e6ece8;font-weight:500}
+  .totali .netto{margin-left:auto;text-align:right}
+  .totali .netto span{font-size:13px;color:#9fb0a6;display:block}
+  .totali .netto b{font-size:30px;font-weight:600;letter-spacing:-.02em}
+  .vuoto{padding:40px 20px;text-align:center;color:var(--testo-tenue)}
+  .errore{
+    background:#fdf2f2;border:1px solid #e8c9c9;color:var(--rosso);
+    padding:11px 14px;border-radius:6px;margin-bottom:16px;font-size:14px;
+  }
+  .griglia{display:grid;gap:14px}
+  .pillola{
+    display:inline-block;padding:2px 8px;border-radius:20px;
+    font-size:12px;background:#e8ece7;color:var(--testo-tenue);
+  }
+  .pillola.fatta{background:#e3efe8;color:var(--verde)}
+  .risultati{
+    border:1px solid var(--riga);border-radius:6px;background:var(--superficie);
+    max-height:190px;overflow:auto;margin-top:4px;
+  }
+  .risultati button{
+    display:block;width:100%;text-align:left;padding:9px 11px;
+    background:none;border:none;border-bottom:1px solid var(--riga);
+  }
+  .risultati button:last-child{border-bottom:none}
+  .risultati button:hover{background:#eef1ed}
+  @media(max-width:720px){
+    main{padding:16px 14px 150px}
+    .totali .netto{margin-left:0;text-align:left;width:100%}
+    th.nascondi,td.nascondi{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="radice"></div>
+
+<script type="text/babel">
+const {useState,useEffect,useCallback} = React;
+
+/* ============================================================
+   CONFIGURAZIONE — DA COMPILARE UNA VOLTA SOLA
+   La chiave "anon" la trovi su Supabase in
+   Project Settings > API > Project API keys > anon public.
+   Oppure copiala dal file App.jsx di NutriOra, e' la stessa.
+   ============================================================ */
+const SUPABASE_URL = "https://ennvmeqzrescflqjagaa.supabase.co";
+const SUPABASE_ANON_KEY = "INCOLLA_QUI_LA_CHIAVE_ANON";
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const eur = n => (Number(n)||0).toLocaleString("it-IT",
+  {style:"currency",currency:"EUR"});
+const oggi = () => new Date().toISOString().slice(0,10);
+
+const PRESTAZIONI = [
+  ["prima_visita","Prima visita"],
+  ["controllo","Controllo"],
+  ["pacchetto","Pacchetto"],
+  ["altro","Altro"],
+];
+const etichettaPrestazione = v =>
+  (PRESTAZIONI.find(p=>p[0]===v)||[,v])[1];
+
+/* ============================================================
+   ACCESSO
+   ============================================================ */
+function Accesso({onEntrato}){
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [errore,setErrore]=useState("");
+  const [attesa,setAttesa]=useState(false);
+
+  async function entra(){
+    setAttesa(true); setErrore("");
+    const {data,error} = await db.auth.signInWithPassword({email,password});
+    setAttesa(false);
+    if(error){ setErrore("Email o password non corrispondono."); return; }
+    onEntrato(data.user);
+  }
+
+  return (
+    <main style={{maxWidth:380,paddingTop:70}}>
+      <h2>NutriOra Studio</h2>
+      <p className="sottotitolo">Entra con le credenziali che usi su NutriOra.</p>
+      <div className="scheda griglia">
+        {errore && <div className="errore">{errore}</div>}
+        <div>
+          <label htmlFor="e">Email</label>
+          <input id="e" type="email" value={email} autoComplete="username"
+            onChange={e=>setEmail(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&entra()}/>
+        </div>
+        <div>
+          <label htmlFor="p">Password</label>
+          <input id="p" type="password" value={password} autoComplete="current-password"
+            onChange={e=>setPassword(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&entra()}/>
+        </div>
+        <button className="btn" onClick={entra} disabled={attesa||!email||!password}>
+          {attesa?"Un attimo…":"Entra"}
+        </button>
+      </div>
+    </main>
+  );
+}
+
+/* ============================================================
+   SEDI
+   ============================================================ */
+function Sedi({utente}){
+  const [sedi,setSedi]=useState([]);
+  const [errore,setErrore]=useState("");
+  const [inModifica,setInModifica]=useState(null);
+
+  const carica = useCallback(async()=>{
+    const {data,error} = await db.from("sedi").select("*").order("nome");
+    if(error){ setErrore(error.message); return; }
+    setSedi(data||[]);
+  },[]);
+  useEffect(()=>{carica()},[carica]);
+
+  function nuova(){
+    setInModifica({nome:"",tipo_costo:"giornata",commissione_pos:0,
+      affitto_mensile:"",indirizzo:"",attiva:true});
+  }
+
+  async function salva(){
+    const s = inModifica;
+    const riga = {
+      nome:s.nome.trim(),
+      tipo_costo:s.tipo_costo,
+      commissione_pos:Number(s.commissione_pos)||0,
+      affitto_mensile:s.affitto_mensile===""?null:Number(s.affitto_mensile),
+      indirizzo:s.indirizzo||null,
+      attiva:s.attiva,
+    };
+    let error;
+    if(s.id){
+      ({error} = await db.from("sedi").update(riga).eq("id",s.id));
+    }else{
+      riga.nutrizionista_id = utente.id;
+      ({error} = await db.from("sedi").insert(riga));
+    }
+    if(error){ setErrore(error.message); return; }
+    setInModifica(null); setErrore(""); carica();
+  }
+
+  async function elimina(id){
+    if(!confirm("Vuoi eliminare questa sede? Le giornate gia' registrate la useranno ancora, quindi se ne hai fatte l'eliminazione verra' rifiutata.")) return;
+    const {error} = await db.from("sedi").delete().eq("id",id);
+    if(error){ setErrore("Non si puo' eliminare: ci sono giornate collegate. Puoi metterla su Non attiva."); return; }
+    carica();
+  }
+
+  if(inModifica) return (
+    <>
+      <h2>{inModifica.id?"Modifica sede":"Nuova sede"}</h2>
+      <p className="sottotitolo">
+        La commissione POS serve a calcolare il netto: mettila come la trovi
+        sull'estratto del terminale, ad esempio 1,5 per l'1,5%.
+      </p>
+      {errore && <div className="errore">{errore}</div>}
+      <div className="scheda griglia" style={{maxWidth:520}}>
+        <div>
+          <label>Nome</label>
+          <input value={inModifica.nome}
+            onChange={e=>setInModifica({...inModifica,nome:e.target.value})}/>
+        </div>
+        <div>
+          <label>Indirizzo</label>
+          <input value={inModifica.indirizzo||""}
+            onChange={e=>setInModifica({...inModifica,indirizzo:e.target.value})}/>
+        </div>
+        <div>
+          <label>Come paghi questa sede</label>
+          <select value={inModifica.tipo_costo}
+            onChange={e=>setInModifica({...inModifica,tipo_costo:e.target.value})}>
+            <option value="giornata">Quota che scrivo giorno per giorno</option>
+            <option value="mensile">Canone fisso mensile</option>
+          </select>
+        </div>
+        {inModifica.tipo_costo==="mensile" && (
+          <div>
+            <label>Canone mensile in euro</label>
+            <input type="number" step="0.01" value={inModifica.affitto_mensile||""}
+              onChange={e=>setInModifica({...inModifica,affitto_mensile:e.target.value})}/>
+          </div>
+        )}
+        <div>
+          <label>Commissione POS in percentuale</label>
+          <input type="number" step="0.001" value={inModifica.commissione_pos}
+            onChange={e=>setInModifica({...inModifica,commissione_pos:e.target.value})}/>
+        </div>
+        <div>
+          <label>
+            <input type="checkbox" style={{width:"auto",marginRight:8}}
+              checked={inModifica.attiva}
+              onChange={e=>setInModifica({...inModifica,attiva:e.target.checked})}/>
+            Ci ricevo ancora
+          </label>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <button className="btn" onClick={salva} disabled={!inModifica.nome.trim()}>
+            Salva sede
+          </button>
+          <button className="btn secondario" onClick={()=>{setInModifica(null);setErrore("")}}>
+            Annulla
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <h2>Sedi</h2>
+      <p className="sottotitolo">Gli studi e le palestre dove ricevi.</p>
+      {errore && <div className="errore">{errore}</div>}
+      <div className="scheda" style={{padding:0,overflow:"hidden"}}>
+        {sedi.length===0 ? (
+          <div className="vuoto">Non hai ancora nessuna sede. Aggiungi la prima.</div>
+        ) : (
+          <table>
+            <thead><tr>
+              <th>Sede</th>
+              <th className="nascondi">Costo</th>
+              <th className="destra">POS</th>
+              <th></th>
+            </tr></thead>
+            <tbody>
+              {sedi.map(s=>(
+                <tr key={s.id}>
+                  <td>
+                    <div style={{fontWeight:500}}>{s.nome}</div>
+                    {!s.attiva && <span className="pillola">Non attiva</span>}
+                  </td>
+                  <td className="nascondi">
+                    {s.tipo_costo==="mensile"
+                      ? `${eur(s.affitto_mensile)} al mese`
+                      : "Quota giornaliera"}
+                  </td>
+                  <td className="destra num">{Number(s.commissione_pos)}%</td>
+                  <td className="destra" style={{whiteSpace:"nowrap"}}>
+                    <button className="btn secondario" style={{padding:"5px 10px"}}
+                      onClick={()=>setInModifica(s)}>Modifica</button>
+                    <button className="btn pericolo" style={{padding:"5px 10px",marginLeft:6}}
+                      onClick={()=>elimina(s.id)}>Elimina</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <button className="btn" style={{marginTop:16}} onClick={nuova}>Aggiungi sede</button>
+    </>
+  );
+}
+
+/* ============================================================
+   CERCA PAZIENTE
+   ============================================================ */
+function CercaPaziente({utente,onScelto}){
+  const [testo,setTesto]=useState("");
+  const [risultati,setRisultati]=useState([]);
+  const [cercando,setCercando]=useState(false);
+
+  useEffect(()=>{
+    if(testo.trim().length<2){ setRisultati([]); return; }
+    let annullato=false;
+    const t=setTimeout(async()=>{
+      setCercando(true);
+      const {data} = await db.from("pazienti")
+        .select("id,nome,email").ilike("nome",`%${testo.trim()}%`).limit(8);
+      if(!annullato){ setRisultati(data||[]); setCercando(false); }
+    },250);
+    return ()=>{annullato=true;clearTimeout(t)};
+  },[testo]);
+
+  async function creaNuovo(){
+    const nome = testo.trim();
+    if(!nome) return;
+    const {data,error} = await db.from("pazienti")
+      .insert({nome,origine:"gestionale",nutrizionista_id:utente.id})
+      .select("id,nome").single();
+    if(error){ alert("Non sono riuscito a creare il paziente: "+error.message); return; }
+    onScelto(data); setTesto(""); setRisultati([]);
+  }
+
+  return (
+    <div>
+      <label>Paziente</label>
+      <input value={testo} placeholder="Scrivi il cognome o il nome"
+        onChange={e=>setTesto(e.target.value)}/>
+      {testo.trim().length>=2 && (
+        <div className="risultati">
+          {risultati.map(p=>(
+            <button key={p.id} onClick={()=>{onScelto(p);setTesto("");setRisultati([])}}>
+              {p.nome}
+              {p.email && <span style={{color:"var(--testo-tenue)",fontSize:13}}> · {p.email}</span>}
+            </button>
+          ))}
+          {!cercando && risultati.length===0 && (
+            <button onClick={creaNuovo}>
+              Nessuno trovato. Aggiungi <b>{testo.trim()}</b> come nuovo paziente
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   GIORNATA
+   ============================================================ */
+function Giornata({utente}){
+  const [sedi,setSedi]=useState([]);
+  const [data,setData]=useState(oggi());
+  const [sedeId,setSedeId]=useState("");
+  const [giornata,setGiornata]=useState(null);
+  const [visite,setVisite]=useState([]);
+  const [pagamenti,setPagamenti]=useState([]);
+  const [errore,setErrore]=useState("");
+  const [quota,setQuota]=useState("");
+
+  const [paziente,setPaziente]=useState(null);
+  const [prestazione,setPrestazione]=useState("controllo");
+  const [importo,setImporto]=useState("");
+  const [metodo,setMetodo]=useState("pos");
+  const [fattura,setFattura]=useState(false);
+
+  const sede = sedi.find(s=>s.id===sedeId);
+
+  useEffect(()=>{(async()=>{
+    const {data:d,error} = await db.from("sedi").select("*")
+      .eq("attiva",true).order("nome");
+    if(error){ setErrore(error.message); return; }
+    setSedi(d||[]);
+    if(d&&d.length&&!sedeId) setSedeId(d[0].id);
+  })()},[]);
+
+  const caricaGiornata = useCallback(async()=>{
+    if(!sedeId||!data){ setGiornata(null); return; }
+    const {data:g} = await db.from("giornate").select("*")
+      .eq("data",data).eq("sede_id",sedeId).maybeSingle();
+    setGiornata(g||null);
+    setQuota(g? String(g.quota_studio) : "");
+    if(!g){ setVisite([]); setPagamenti([]); return; }
+    const [{data:v},{data:p}] = await Promise.all([
+      db.from("visite").select("*, pazienti(nome)")
+        .eq("giornata_id",g.id).order("creata_il"),
+      db.from("pagamenti").select("*, pazienti(nome)")
+        .eq("giornata_id",g.id).order("creato_il"),
+    ]);
+    setVisite(v||[]); setPagamenti(p||[]);
+  },[data,sedeId]);
+  useEffect(()=>{caricaGiornata()},[caricaGiornata]);
+
+  async function apriGiornata(){
+    const {data:g,error} = await db.from("giornate")
+      .insert({data,sede_id:sedeId,quota_studio:0,nutrizionista_id:utente.id})
+      .select("*").single();
+    if(error){ setErrore(error.message); return null; }
+    setGiornata(g); setQuota("0"); return g;
+  }
+
+  async function salvaQuota(){
+    if(!giornata) return;
+    const v = Number(quota)||0;
+    const {error} = await db.from("giornate")
+      .update({quota_studio:v}).eq("id",giornata.id);
+    if(error){ setErrore(error.message); return; }
+    setGiornata({...giornata,quota_studio:v});
+  }
+
+  async function aggiungi(){
+    setErrore("");
+    let g = giornata || await apriGiornata();
+    if(!g) return;
+
+    const {data:v,error:e1} = await db.from("visite").insert({
+      paziente_id:paziente.id, giornata_id:g.id, data,
+      prestazione, importo_dovuto: importo===""?null:Number(importo),
+      nutrizionista_id:utente.id,
+    }).select("*").single();
+    if(e1){ setErrore(e1.message); return; }
+
+    if(importo!=="" && Number(importo)>0){
+      const perc = metodo==="pos" ? Number(sede?.commissione_pos||0) : 0;
+      const {error:e2} = await db.from("pagamenti").insert({
+        paziente_id:paziente.id, giornata_id:g.id, visita_id:v.id, data,
+        importo:Number(importo), metodo, commissione_perc:perc,
+        fattura_emessa:fattura, nutrizionista_id:utente.id,
+      });
+      if(e2){ setErrore(e2.message); return; }
+    }
+
+    setPaziente(null); setImporto(""); setFattura(false);
+    setPrestazione("controllo");
+    caricaGiornata();
+  }
+
+  async function togliVisita(v){
+    if(!confirm("Tolgo questa riga e il pagamento collegato?")) return;
+    await db.from("pagamenti").delete().eq("visita_id",v.id);
+    await db.from("visite").delete().eq("id",v.id);
+    caricaGiornata();
+  }
+
+  async function cambiaFattura(p){
+    await db.from("pagamenti")
+      .update({fattura_emessa:!p.fattura_emessa}).eq("id",p.id);
+    caricaGiornata();
+  }
+
+  const incassato = pagamenti.reduce((t,p)=>t+Number(p.importo),0);
+  const commissioni = pagamenti.reduce((t,p)=>t+Number(p.commissione_eur||0),0);
+  const quotaNum = Number(giornata?.quota_studio||0);
+  const netto = incassato - commissioni - quotaNum;
+
+  const pagamentoDi = idVisita => pagamenti.find(p=>p.visita_id===idVisita);
+
+  return (
+    <>
+      <h2>Giornata</h2>
+      <p className="sottotitolo">
+        Scegli il giorno e la sede, poi aggiungi i pazienti man mano.
+      </p>
+      {errore && <div className="errore">{errore}</div>}
+
+      <div className="scheda" style={{marginBottom:18}}>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <div style={{flex:"1 1 150px"}}>
+            <label>Data</label>
+            <input type="date" value={data} onChange={e=>setData(e.target.value)}/>
+          </div>
+          <div style={{flex:"2 1 220px"}}>
+            <label>Sede</label>
+            <select value={sedeId} onChange={e=>setSedeId(e.target.value)}>
+              {sedi.length===0 && <option value="">Nessuna sede attiva</option>}
+              {sedi.map(s=><option key={s.id} value={s.id}>{s.nome}</option>)}
+            </select>
+          </div>
+          <div style={{flex:"1 1 170px"}}>
+            <label>Quota per lo studio</label>
+            <input type="number" step="0.01" value={quota} placeholder="0,00"
+              disabled={!giornata}
+              onChange={e=>setQuota(e.target.value)} onBlur={salvaQuota}/>
+          </div>
+        </div>
+        {sede?.tipo_costo==="mensile" && (
+          <p style={{margin:"12px 0 0",fontSize:13,color:"var(--testo-tenue)"}}>
+            Questa sede la paghi a canone fisso ({eur(sede.affitto_mensile)} al mese),
+            quindi la quota giornaliera di norma resta a zero.
+          </p>
+        )}
+      </div>
+
+      <div className="scheda" style={{padding:0,overflow:"hidden",marginBottom:18}}>
+        {visite.length===0 ? (
+          <div className="vuoto">
+            Nessun paziente registrato per questa giornata.
+          </div>
+        ) : (
+          <table>
+            <thead><tr>
+              <th>Paziente</th>
+              <th className="nascondi">Prestazione</th>
+              <th className="destra">Incasso</th>
+              <th className="nascondi destra">Commissione</th>
+              <th>Fattura</th>
+              <th></th>
+            </tr></thead>
+            <tbody>
+              {visite.map(v=>{
+                const p = pagamentoDi(v.id);
+                return (
+                  <tr key={v.id}>
+                    <td style={{fontWeight:500}}>{v.pazienti?.nome||"—"}</td>
+                    <td className="nascondi">{etichettaPrestazione(v.prestazione)}</td>
+                    <td className="destra num">
+                      {p ? eur(p.importo) : <span style={{color:"var(--testo-tenue)"}}>non pagata</span>}
+                      {p && <div style={{fontSize:12,color:"var(--testo-tenue)"}}>
+                        {p.metodo==="pos"?"POS":p.metodo==="contanti"?"Contanti":"Bonifico"}
+                      </div>}
+                    </td>
+                    <td className="nascondi destra num" style={{color:"var(--ottone)"}}>
+                      {p&&Number(p.commissione_eur)>0 ? "−"+eur(p.commissione_eur) : "—"}
+                    </td>
+                    <td>
+                      {p ? (
+                        <button className={"pillola "+(p.fattura_emessa?"fatta":"")}
+                          style={{border:"none",cursor:"pointer"}}
+                          onClick={()=>cambiaFattura(p)}>
+                          {p.fattura_emessa?"Emessa":"Da fare"}
+                        </button>
+                      ) : "—"}
+                    </td>
+                    <td className="destra">
+                      <button className="btn pericolo" style={{padding:"4px 9px"}}
+                        onClick={()=>togliVisita(v)}>Togli</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="scheda">
+        <h3 style={{margin:"0 0 14px",fontSize:16,fontWeight:600}}>Aggiungi un paziente</h3>
+        {!paziente ? (
+          <CercaPaziente utente={utente} onScelto={setPaziente}/>
+        ) : (
+          <div className="griglia">
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <b>{paziente.nome}</b>
+              <button className="btn secondario" style={{padding:"3px 10px"}}
+                onClick={()=>setPaziente(null)}>Cambia</button>
+            </div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <div style={{flex:"1 1 160px"}}>
+                <label>Prestazione</label>
+                <select value={prestazione} onChange={e=>setPrestazione(e.target.value)}>
+                  {PRESTAZIONI.map(([v,t])=><option key={v} value={v}>{t}</option>)}
+                </select>
+              </div>
+              <div style={{flex:"1 1 130px"}}>
+                <label>Quanto ha pagato</label>
+                <input type="number" step="0.01" value={importo} placeholder="vuoto se non paga oggi"
+                  onChange={e=>setImporto(e.target.value)}/>
+              </div>
+              <div style={{flex:"1 1 130px"}}>
+                <label>Come</label>
+                <select value={metodo} onChange={e=>setMetodo(e.target.value)}
+                  disabled={importo===""}>
+                  <option value="pos">POS</option>
+                  <option value="contanti">Contanti</option>
+                  <option value="bonifico">Bonifico</option>
+                </select>
+              </div>
+            </div>
+            <label>
+              <input type="checkbox" style={{width:"auto",marginRight:8}}
+                checked={fattura} disabled={importo===""}
+                onChange={e=>setFattura(e.target.checked)}/>
+              Fattura gia' emessa
+            </label>
+            <div>
+              <button className="btn" onClick={aggiungi} disabled={!sedeId}>
+                Aggiungi alla giornata
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="totali">
+        <div className="dentro">
+          <div className="voce">Incassato<b className="num">{eur(incassato)}</b></div>
+          <div className="voce">Commissioni POS<b className="num">−{eur(commissioni)}</b></div>
+          <div className="voce">Quota studio<b className="num">−{eur(quotaNum)}</b></div>
+          <div className="netto">
+            <span>Ti resta</span>
+            <b className="num">{eur(netto)}</b>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   APP
+   ============================================================ */
+function App(){
+  const [utente,setUtente]=useState(null);
+  const [pronto,setPronto]=useState(false);
+  const [sezione,setSezione]=useState("giornata");
+
+  useEffect(()=>{(async()=>{
+    const {data} = await db.auth.getSession();
+    setUtente(data.session?.user||null);
+    setPronto(true);
+  })()},[]);
+
+  if(SUPABASE_ANON_KEY.startsWith("INCOLLA")) return (
+    <main style={{maxWidth:520,paddingTop:70}}>
+      <h2>Manca la chiave di accesso al database</h2>
+      <p className="sottotitolo">
+        Apri il file index.html, cerca la riga SUPABASE_ANON_KEY e incolla al
+        posto del segnaposto la chiave anon del progetto. La trovi su Supabase
+        in Project Settings, sezione API, sotto "anon public".
+      </p>
+    </main>
+  );
+
+  if(!pronto) return <main><p className="sottotitolo">Un attimo…</p></main>;
+  if(!utente) return <Accesso onEntrato={setUtente}/>;
+
+  return (
+    <>
+      <header className="barra">
+        <h1>NutriOra Studio</h1>
+        <nav className="sezioni">
+          <button className={sezione==="giornata"?"attiva":""}
+            onClick={()=>setSezione("giornata")}>Giornata</button>
+          <button className={sezione==="sedi"?"attiva":""}
+            onClick={()=>setSezione("sedi")}>Sedi</button>
+          <button onClick={async()=>{await db.auth.signOut();setUtente(null)}}>Esci</button>
+        </nav>
+      </header>
+      <main>
+        {sezione==="giornata" && <Giornata utente={utente}/>}
+        {sezione==="sedi" && <Sedi utente={utente}/>}
+      </main>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("radice")).render(<App/>);
+</script>
+</body>
+</html>
