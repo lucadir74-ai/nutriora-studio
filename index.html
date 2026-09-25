@@ -683,6 +683,114 @@ const CAMPI_DATI = [
   ["provincia","Provincia"],
 ];
 
+/* ------------------------------------------------------------
+   COMUNI ITALIANI — nome, sigla provincia, codice catastale, CAP
+   Il file comuni.json sta nel repo accanto a index.html e viene
+   caricato una sola volta, la prima volta che serve.
+   CAP vuoto = il comune ne ha piu' di uno (es. Roma): va scritto a mano.
+   ------------------------------------------------------------ */
+let COMUNI = null, comuniInArrivo = null;
+function caricaComuni(){
+  if(COMUNI) return Promise.resolve(COMUNI);
+  if(!comuniInArrivo) comuniInArrivo = fetch("/comuni.json")
+    .then(r=>{ if(!r.ok) throw new Error("comuni.json non trovato"); return r.json(); })
+    .then(d=>(COMUNI=d.map(c=>({nome:c[0],sigla:c[1],catastale:c[2],cap:c[3],chiave:normalizza(c[0])}))))
+    .catch(e=>{ comuniInArrivo=null; throw e; });
+  return comuniInArrivo;
+}
+const normalizza = t => (t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .toLowerCase().replace(/[^a-z]/g,"");
+const etichettaComune = c => `${c.nome} (${c.sigla})`;
+// "Roma (RM)" -> il comune; accetta anche il solo nome se non e' ambiguo
+function trovaComune(testo){
+  if(!COMUNI||!testo) return null;
+  const m = testo.match(/^(.*?)\s*\(([A-Za-z]{2})\)\s*$/);
+  const chiave = normalizza(m?m[1]:testo);
+  const trovati = COMUNI.filter(c=>c.chiave===chiave && (!m||c.sigla===m[2].toUpperCase()));
+  return trovati.length===1 ? trovati[0] : null;
+}
+
+function CercaComune({valore,onCambia,onScelto,placeholder}){
+  const [aperto,setAperto]=useState(false);
+  const [elenco,setElenco]=useState([]);
+  const [errore,setErrore]=useState("");
+
+  useEffect(()=>{
+    const q = normalizza(valore);
+    if(!aperto||q.length<2){ setElenco([]); return; }
+    caricaComuni().then(tutti=>{
+      const inizio = tutti.filter(c=>c.chiave.startsWith(q));
+      const dentro = inizio.length<8 ? tutti.filter(c=>!c.chiave.startsWith(q)&&c.chiave.includes(q)) : [];
+      setElenco([...inizio,...dentro].slice(0,8)); setErrore("");
+    }).catch(()=>setErrore("Elenco dei comuni non disponibile: scrivi a mano."));
+  },[valore,aperto]);
+
+  return (
+    <div style={{position:"relative"}}>
+      <input value={valore||""} placeholder={placeholder} autoComplete="off"
+        onChange={e=>{onCambia(e.target.value);setAperto(true)}}
+        onFocus={()=>setAperto(true)}
+        onBlur={()=>setTimeout(()=>setAperto(false),150)}/>
+      {aperto && elenco.length>0 && (
+        <div className="risultati" style={{position:"absolute",left:0,right:0,zIndex:5}}>
+          {elenco.map(c=>(
+            <button key={c.catastale} onMouseDown={e=>e.preventDefault()}
+              onClick={()=>{onScelto(c);setAperto(false)}}>
+              {c.nome} <span style={{color:"var(--testo-tenue)",fontSize:13}}>({c.sigla})</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {errore && <div style={{fontSize:12,color:"var(--rosso)",marginTop:4}}>{errore}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------
+   CODICE FISCALE — regole del DM 23/12/1976.
+   Non gestisce l'omocodia (codici modificati dall'Agenzia delle
+   Entrate per evitare doppioni): il codice valido resta quello
+   della tessera sanitaria.
+   ------------------------------------------------------------ */
+const soloLettere = t => (t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .toUpperCase().replace(/[^A-Z]/g,"");
+const consonanti = t => t.replace(/[AEIOU]/g,"");
+const vocali = t => t.replace(/[^AEIOU]/g,"");
+function parteCognome(c){ c=soloLettere(c); return (consonanti(c)+vocali(c)+"XXX").slice(0,3); }
+function parteNome(n){
+  n=soloLettere(n); const k=consonanti(n);
+  if(k.length>=4) return k[0]+k[2]+k[3];
+  return (k+vocali(n)+"XXX").slice(0,3);
+}
+const MESI_CF = "ABCDEHLMPRST";
+const DISPARI = {0:1,1:0,2:5,3:7,4:9,5:13,6:15,7:17,8:19,9:21,A:1,B:0,C:5,D:7,E:9,F:13,G:15,H:17,I:19,J:21,
+  K:2,L:4,M:18,N:20,O:11,P:3,Q:6,R:8,S:12,T:14,U:16,V:10,W:22,X:25,Y:24,Z:23};
+const valPari = ch => /[0-9]/.test(ch) ? Number(ch) : ch.charCodeAt(0)-65;
+function carattereControllo(cf15){
+  let s=0;
+  for(let i=0;i<15;i++) s += (i%2===0) ? DISPARI[cf15[i]] : valPari(cf15[i]);
+  return String.fromCharCode(65+s%26);
+}
+function calcolaCF({nome,cognome,sesso,dataNascita,catastale}){
+  const [a,m,g] = dataNascita.split("-").map(Number);
+  const giorno = g + (sesso==="F"?40:0);
+  const base = parteCognome(cognome)+parteNome(nome)+String(a).slice(-2)+
+    MESI_CF[m-1]+String(giorno).padStart(2,"0")+catastale.toUpperCase();
+  return base+carattereControllo(base);
+}
+
+// Nutriora salva "Nome Cognome" in un campo solo. Se il cognome e' gia'
+// noto (dati_paziente) lo si stacca da li', altrimenti si propone
+// prima parola = nome, resto = cognome, e lo correggi tu se serve.
+function dividiNome(completo,cognomeNoto){
+  completo=(completo||"").trim().replace(/\s+/g," ");
+  const cg=(cognomeNoto||"").trim();
+  if(cg && completo.toLowerCase().endsWith(" "+cg.toLowerCase()))
+    return [completo.slice(0,completo.length-cg.length).trim(), completo.slice(completo.length-cg.length)];
+  const i=completo.indexOf(" ");
+  return i<0 ? [completo,""] : [completo.slice(0,i), completo.slice(i+1)];
+}
+
 const etaDa = dn => {
   if(!dn) return null;
   const n=new Date(dn), o=new Date();
@@ -796,12 +904,14 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
   const [errore,setErrore]=useState("");
   const [salvando,setSalvando]=useState(false);
   const [salvato,setSalvato]=useState(false);
+  const [avvisoCF,setAvvisoCF]=useState(false);
 
   useEffect(()=>{(async()=>{
     // Paziente nuovo: la scheda parte vuota e nel database non si scrive
     // nulla finche' non premi Salva, cosi' non restano pazienti fantasma.
     if(!idIniziale){
-      setP({id:null,nome:nomeIniziale||"",email:"",sesso:"",data_nascita:"",origine:"gestionale"});
+      const [np,cg] = dividiNome(nomeIniziale);
+      setP({id:null,nome:"",nome_proprio:np,cognome:cg,email:"",sesso:"",data_nascita:"",origine:"gestionale"});
       return;
     }
     const [r1,r2,r3,r4] = await Promise.all([
@@ -813,7 +923,8 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
         .eq("paziente_id",id),
     ]);
     if(r1.error){ setErrore(r1.error.message); return; }
-    setP(r1.data); setD(r2.data||{});
+    const [np,cg] = dividiNome(r1.data.nome, r2.data?.cognome);
+    setP({...r1.data,nome_proprio:np,cognome:cg}); setD(r2.data||{});
     setVisite(r3.data||[]); setPagamenti(r4.data||[]);
   })()},[idIniziale]);
 
@@ -831,8 +942,9 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
 
   async function salva(){
     setErrore(""); setSalvato(false);
-    const nome = (p.nome||"").trim();
-    if(!nome){ setErrore("Il nome non può restare vuoto."); return; }
+    const np = (p.nome_proprio||"").trim(), cg = (p.cognome||"").trim();
+    if(!np||!cg){ setErrore("Servono sia il nome sia il cognome."); return; }
+    const nome = np+" "+cg;
     setSalvando(true);
 
     const agg = {nome};
@@ -865,7 +977,7 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
     }
 
     const riga = {paziente_id:pid, nutrizionista_id:utente.id,
-                  aggiornato_il:new Date().toISOString()};
+                  aggiornato_il:new Date().toISOString(), cognome:cg};
     CAMPI_DATI.forEach(([k])=>{
       let v = (d[k]??"").toString().trim();
       if(k==="codice_fiscale"||k==="provincia") v = v.toUpperCase();
@@ -876,6 +988,31 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
 
     setP({...p,...agg,id:pid}); setD({...d,...riga});
     setSalvando(false); setSalvato(true);
+  }
+
+  async function calcolaCodice(){
+    setErrore(""); setAvvisoCF(false);
+    const mancano=[];
+    if(!(p.nome_proprio||"").trim()) mancano.push("nome");
+    if(!(p.cognome||"").trim()) mancano.push("cognome");
+    if(!p.sesso) mancano.push("sesso");
+    if(!p.data_nascita) mancano.push("data di nascita");
+    if(!(d.luogo_nascita||"").trim()) mancano.push("luogo di nascita");
+    if(mancano.length){ setErrore("Per calcolare il codice fiscale mancano: "+mancano.join(", ")+"."); return; }
+    try{ await caricaComuni(); }
+    catch(e){ setErrore("Elenco dei comuni non disponibile, il codice non si può calcolare adesso."); return; }
+    const c = trovaComune(d.luogo_nascita);
+    if(!c){
+      setErrore("Non riconosco il luogo di nascita: sceglilo dall'elenco che compare mentre scrivi. "+
+        "Per chi è nato all'estero il calcolo non è disponibile: copia il codice dalla tessera sanitaria.");
+      return;
+    }
+    const cf = calcolaCF({nome:p.nome_proprio,cognome:p.cognome,sesso:p.sesso,
+                          dataNascita:p.data_nascita,catastale:c.catastale});
+    const att = (d.codice_fiscale||"").trim().toUpperCase();
+    if(att && att!==cf &&
+       !confirm(`Il codice calcolato (${cf}) è diverso da quello già scritto (${att}).\n\nLo sostituisco?`)) return;
+    cambiaD("codice_fiscale",cf); setAvvisoCF(true);
   }
 
   async function elimina(){
@@ -907,7 +1044,7 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
     <>
       <button className="btn secondario" onClick={onChiudi}>← Pazienti</button>
       <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",margin:"18px 0 4px"}}>
-        <h2 style={{margin:0}}>{id ? p.nome : (p.nome.trim()||"Nuovo paziente")}</h2>
+        <h2 style={{margin:0}}>{id ? p.nome : ((p.nome_proprio+" "+p.cognome).trim()||"Nuovo paziente")}</h2>
         <span className={"pillola "+(daStudio?"":"fatta")}>{daStudio?"Studio":"Nutriora"}</span>
       </div>
       <p className="sottotitolo">
@@ -923,9 +1060,14 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
         <h3 className="titoletto">Anagrafica</h3>
         <div className="campi">
           <div>
-            <label>Nome e cognome</label>
-            <input value={p.nome||""} autoFocus={!id} placeholder="Es. Mario Rossi"
-              onChange={e=>cambiaP("nome",e.target.value)}/>
+            <label>Nome</label>
+            <input value={p.nome_proprio||""} autoFocus={!id}
+              onChange={e=>cambiaP("nome_proprio",e.target.value)}/>
+          </div>
+          <div>
+            <label>Cognome</label>
+            <input value={p.cognome||""}
+              onChange={e=>cambiaP("cognome",e.target.value)}/>
           </div>
           <div>
             <label>Sesso</label>
@@ -941,9 +1083,30 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
             <input type="date" value={p.data_nascita||""} disabled={!daStudio}
               onChange={e=>cambiaP("data_nascita",e.target.value)}/>
           </div>
-          {campo("luogo_nascita","Luogo di nascita")}
-          {campo("codice_fiscale","Codice fiscale",{maxLength:16,style:{textTransform:"uppercase"}})}
+          <div>
+            <label>Luogo di nascita</label>
+            <CercaComune valore={d.luogo_nascita} placeholder="Scrivi il comune"
+              onCambia={v=>cambiaD("luogo_nascita",v)}
+              onScelto={c=>cambiaD("luogo_nascita",etichettaComune(c))}/>
+          </div>
+          <div>
+            <label>Codice fiscale</label>
+            <div style={{display:"flex",gap:8}}>
+              <input value={d.codice_fiscale??""} maxLength={16}
+                style={{textTransform:"uppercase",minWidth:0}}
+                onChange={e=>{cambiaD("codice_fiscale",e.target.value);setAvvisoCF(false)}}/>
+              <button className="btn secondario" style={{padding:"0 12px"}}
+                onClick={calcolaCodice}>Calcola</button>
+            </div>
+          </div>
         </div>
+        {avvisoCF && (
+          <p className="nota" style={{marginTop:10}}>
+            Codice calcolato. Confrontalo con la tessera sanitaria: in rari casi
+            (omocodia) l'Agenzia delle Entrate ne assegna uno leggermente diverso,
+            e vale quello della tessera.
+          </p>
+        )}
 
         <h3 className="titoletto" style={{marginTop:22}}>Contatti</h3>
         <div className="campi">
@@ -963,7 +1126,12 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
             <input value={d.indirizzo??""} onChange={e=>cambiaD("indirizzo",e.target.value)}/>
           </div>
           {campo("cap","CAP",{inputMode:"numeric",maxLength:5})}
-          {campo("citta","Città")}
+          <div>
+            <label>Città</label>
+            <CercaComune valore={d.citta} placeholder="Scrivi il comune"
+              onCambia={v=>cambiaD("citta",v)}
+              onScelto={c=>{ setD({...d,citta:c.nome,provincia:c.sigla,cap:c.cap||d.cap}); setSalvato(false); }}/>
+          </div>
           {campo("provincia","Provincia",{maxLength:2,style:{textTransform:"uppercase"}})}
         </div>
 
