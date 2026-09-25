@@ -111,6 +111,13 @@
   }
   .risultati button:last-child{border-bottom:none}
   .risultati button:hover{background:#eef1ed}
+  .campi{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+  .titoletto{margin:0 0 12px;font-size:15px;font-weight:600}
+  .nota{font-size:13px;color:var(--testo-tenue);margin:16px 0 0}
+  input:disabled,select:disabled{background:#eef1ed;color:var(--testo-tenue)}
+  tr.cliccabile{cursor:pointer}
+  tr.cliccabile:hover td{background:#f5f7f4}
+  nav.sezioni{flex-wrap:wrap}
   @media(max-width:720px){
     main{padding:16px 14px 150px}
     .totali .netto{margin-left:0;text-align:left;width:100%}
@@ -660,6 +667,351 @@ function Giornata({utente}){
 }
 
 /* ============================================================
+   PAZIENTI — elenco e scheda anagrafica
+   Una sola anagrafica per Nutriora e Studio. I pazienti nati in
+   Nutriora si vedono anche qui, ma i dati che Nutriora usa per i
+   calcoli (sesso, data di nascita, email) si modificano solo la'.
+   ============================================================ */
+const CAMPI_DATI = [
+  ["luogo_nascita","Luogo di nascita"],
+  ["codice_fiscale","Codice fiscale"],
+  ["cellulare","Cellulare"],
+  ["telefono_fisso","Telefono fisso"],
+  ["indirizzo","Indirizzo"],
+  ["cap","CAP"],
+  ["citta","Città"],
+  ["provincia","Provincia"],
+];
+
+const etaDa = dn => {
+  if(!dn) return null;
+  const n=new Date(dn), o=new Date();
+  let e=o.getFullYear()-n.getFullYear();
+  if(o.getMonth()<n.getMonth()||(o.getMonth()===n.getMonth()&&o.getDate()<n.getDate())) e--;
+  return e>=0&&e<130?e:null;
+};
+const dataIt = d => d ? new Date(d+"T00:00:00").toLocaleDateString("it-IT") : "—";
+const nomeMetodo = m => m==="pos"?"POS":m==="contanti"?"Contanti":"Bonifico";
+
+function Pazienti({utente}){
+  const [testo,setTesto]=useState("");
+  const [filtro,setFiltro]=useState("tutti");
+  const [elenco,setElenco]=useState([]);
+  const [carico,setCarico]=useState(true);
+  const [errore,setErrore]=useState("");
+  const [apertoId,setApertoId]=useState(null);
+
+  const carica = useCallback(async()=>{
+    setCarico(true);
+    let q = db.from("pazienti").select("id,nome,email,origine").order("nome").limit(500);
+    const t = testo.trim();
+    if(t.length>=2) q = q.ilike("nome",`%${t}%`);
+    if(filtro!=="tutti") q = q.eq("origine",filtro);
+    const {data,error} = await q;
+    if(error) setErrore(error.message); else { setErrore(""); setElenco(data||[]); }
+    setCarico(false);
+  },[testo,filtro]);
+  useEffect(()=>{ const t=setTimeout(carica,250); return ()=>clearTimeout(t); },[carica]);
+
+  async function nuovo(){
+    const nome = testo.trim();
+    if(!nome) return;
+    const {data,error} = await db.from("pazienti")
+      .insert({nome,origine:"gestionale",nutrizionista_id:utente.id})
+      .select("id").single();
+    if(error){ setErrore("Non sono riuscito a creare il paziente: "+error.message); return; }
+    setTesto(""); setApertoId(data.id);
+  }
+
+  if(apertoId) return (
+    <SchedaPaziente id={apertoId} utente={utente}
+      onChiudi={()=>{ setApertoId(null); carica(); }}/>
+  );
+
+  return (
+    <>
+      <h2>Pazienti</h2>
+      <p className="sottotitolo">
+        Tutti i tuoi pazienti, quelli dello studio e quelli che usano Nutriora.
+      </p>
+      {errore && <div className="errore">{errore}</div>}
+
+      <div className="scheda" style={{marginBottom:18}}>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <div style={{flex:"3 1 240px"}}>
+            <label>Cerca</label>
+            <input value={testo} placeholder="Nome o cognome"
+              onChange={e=>setTesto(e.target.value)}/>
+          </div>
+          <div style={{flex:"1 1 150px"}}>
+            <label>Mostra</label>
+            <select value={filtro} onChange={e=>setFiltro(e.target.value)}>
+              <option value="tutti">Tutti</option>
+              <option value="gestionale">Solo studio</option>
+              <option value="nutriora">Solo Nutriora</option>
+            </select>
+          </div>
+        </div>
+        {testo.trim().length>=2 && !carico && (
+          <button className="btn secondario" style={{marginTop:12}} onClick={nuovo}>
+            Aggiungi «{testo.trim()}» come nuovo paziente
+          </button>
+        )}
+      </div>
+
+      <div className="scheda" style={{padding:0,overflow:"hidden"}}>
+        {elenco.length===0 ? (
+          <div className="vuoto">{carico?"Un attimo…":"Nessun paziente trovato."}</div>
+        ) : (
+          <table>
+            <thead><tr>
+              <th>Paziente</th>
+              <th className="nascondi">Email</th>
+              <th>Dove</th>
+            </tr></thead>
+            <tbody>
+              {elenco.map(p=>(
+                <tr key={p.id} className="cliccabile" onClick={()=>setApertoId(p.id)}>
+                  <td style={{fontWeight:500}}>{p.nome}</td>
+                  <td className="nascondi" style={{color:"var(--testo-tenue)"}}>{p.email||"—"}</td>
+                  <td>
+                    <span className={"pillola "+(p.origine==="nutriora"?"fatta":"")}>
+                      {p.origine==="nutriora"?"Nutriora":"Studio"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+function SchedaPaziente({id,utente,onChiudi}){
+  const [p,setP]=useState(null);
+  const [d,setD]=useState({});
+  const [visite,setVisite]=useState([]);
+  const [pagamenti,setPagamenti]=useState([]);
+  const [errore,setErrore]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const [salvato,setSalvato]=useState(false);
+
+  useEffect(()=>{(async()=>{
+    const [r1,r2,r3,r4] = await Promise.all([
+      db.from("pazienti").select("id,nome,email,sesso,data_nascita,origine").eq("id",id).single(),
+      db.from("dati_paziente").select("*").eq("paziente_id",id).maybeSingle(),
+      db.from("visite").select("id,data,prestazione,giornate(sedi(nome))")
+        .eq("paziente_id",id).order("data",{ascending:false}),
+      db.from("pagamenti").select("id,visita_id,importo,metodo,fattura_emessa")
+        .eq("paziente_id",id),
+    ]);
+    if(r1.error){ setErrore(r1.error.message); return; }
+    setP(r1.data); setD(r2.data||{});
+    setVisite(r3.data||[]); setPagamenti(r4.data||[]);
+  })()},[id]);
+
+  if(!p) return (
+    <>
+      <button className="btn secondario" onClick={onChiudi}>← Pazienti</button>
+      {errore ? <div className="errore" style={{marginTop:16}}>{errore}</div>
+              : <p className="sottotitolo" style={{marginTop:16}}>Un attimo…</p>}
+    </>
+  );
+
+  const daStudio = p.origine!=="nutriora";
+  const cambiaP = (k,v)=>{ setP({...p,[k]:v}); setSalvato(false); };
+  const cambiaD = (k,v)=>{ setD({...d,[k]:v}); setSalvato(false); };
+
+  async function salva(){
+    setErrore(""); setSalvato(false);
+    const nome = (p.nome||"").trim();
+    if(!nome){ setErrore("Il nome non può restare vuoto."); return; }
+    setSalvando(true);
+
+    const agg = {nome};
+    if(daStudio){
+      agg.sesso = p.sesso||null;
+      agg.data_nascita = p.data_nascita||null;
+      agg.email = (p.email||"").trim().toLowerCase()||null;
+      if(agg.email){
+        const {data:altri} = await db.from("pazienti").select("nome,origine")
+          .eq("email",agg.email).neq("id",id).limit(1);
+        if(altri&&altri.length){
+          setErrore(`Questa email appartiene già a ${altri[0].nome}`+
+            (altri[0].origine==="nutriora"?" in Nutriora":"")+
+            ". Probabilmente è la stessa persona registrata due volte: non salvo, per non creare un doppione.");
+          setSalvando(false); return;
+        }
+      }
+    }
+    const {error:e1} = await db.from("pazienti").update(agg).eq("id",id);
+    if(e1){ setErrore("Anagrafica non salvata: "+e1.message); setSalvando(false); return; }
+
+    const riga = {paziente_id:id, nutrizionista_id:utente.id,
+                  aggiornato_il:new Date().toISOString()};
+    CAMPI_DATI.forEach(([k])=>{
+      let v = (d[k]??"").toString().trim();
+      if(k==="codice_fiscale"||k==="provincia") v = v.toUpperCase();
+      riga[k] = v||null;
+    });
+    const {error:e2} = await db.from("dati_paziente").upsert(riga,{onConflict:"paziente_id"});
+    if(e2){ setErrore("Contatti e residenza non salvati: "+e2.message); setSalvando(false); return; }
+
+    setP({...p,...agg}); setD({...d,...riga});
+    setSalvando(false); setSalvato(true);
+  }
+
+  async function elimina(){
+    const n = visite.length;
+    const msg = `Elimino ${p.nome} dall'anagrafica?`+
+      (n ? `\n\nVerranno cancellate anche ${n} ${n===1?"visita":"visite"} con i pagamenti collegati: gli incassi di quelle giornate cambieranno.` : "")+
+      "\n\nNon si può annullare.";
+    if(!confirm(msg)) return;
+    const e1 = (await db.from("pagamenti").delete().eq("paziente_id",id)).error;
+    const e2 = e1 || (await db.from("visite").delete().eq("paziente_id",id)).error;
+    const e3 = e2 || (await db.from("pazienti").delete().eq("id",id)).error;
+    if(e3){ setErrore("Eliminazione non riuscita: "+e3.message); return; }
+    onChiudi();
+  }
+
+  const pagDi = vid => pagamenti.find(x=>x.visita_id===vid);
+  const totPagato = pagamenti.reduce((t,x)=>t+Number(x.importo),0);
+  const daFatturare = pagamenti.filter(x=>!x.fattura_emessa).length;
+  const eta = etaDa(p.data_nascita);
+
+  const campo = (k,t,extra={}) => (
+    <div key={k}>
+      <label>{t}</label>
+      <input value={d[k]??""} onChange={e=>cambiaD(k,e.target.value)} {...extra}/>
+    </div>
+  );
+
+  return (
+    <>
+      <button className="btn secondario" onClick={onChiudi}>← Pazienti</button>
+      <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",margin:"18px 0 4px"}}>
+        <h2 style={{margin:0}}>{p.nome}</h2>
+        <span className={"pillola "+(daStudio?"":"fatta")}>{daStudio?"Studio":"Nutriora"}</span>
+      </div>
+      <p className="sottotitolo">
+        {eta!==null ? `${eta} anni · ` : ""}
+        {visite.length} {visite.length===1?"visita":"visite"} · pagato in totale {eur(totPagato)}
+        {daFatturare>0 && <span style={{color:"var(--ottone)"}}> · {daFatturare} {daFatturare===1?"fattura":"fatture"} da fare</span>}
+      </p>
+      {errore && <div className="errore">{errore}</div>}
+
+      <div className="scheda" style={{marginBottom:18}}>
+        <h3 className="titoletto">Anagrafica</h3>
+        <div className="campi">
+          <div>
+            <label>Nome e cognome</label>
+            <input value={p.nome||""} onChange={e=>cambiaP("nome",e.target.value)}/>
+          </div>
+          <div>
+            <label>Sesso</label>
+            <select value={p.sesso||""} disabled={!daStudio}
+              onChange={e=>cambiaP("sesso",e.target.value)}>
+              <option value="">—</option>
+              <option value="F">Femmina</option>
+              <option value="M">Maschio</option>
+            </select>
+          </div>
+          <div>
+            <label>Data di nascita</label>
+            <input type="date" value={p.data_nascita||""} disabled={!daStudio}
+              onChange={e=>cambiaP("data_nascita",e.target.value)}/>
+          </div>
+          {campo("luogo_nascita","Luogo di nascita")}
+          {campo("codice_fiscale","Codice fiscale",{maxLength:16,style:{textTransform:"uppercase"}})}
+        </div>
+
+        <h3 className="titoletto" style={{marginTop:22}}>Contatti</h3>
+        <div className="campi">
+          {campo("cellulare","Cellulare",{type:"tel"})}
+          {campo("telefono_fisso","Telefono fisso",{type:"tel"})}
+          <div>
+            <label>Email</label>
+            <input type="email" value={p.email||""} disabled={!daStudio}
+              onChange={e=>cambiaP("email",e.target.value)}/>
+          </div>
+        </div>
+
+        <h3 className="titoletto" style={{marginTop:22}}>Residenza (per la fattura)</h3>
+        <div className="campi">
+          <div style={{gridColumn:"1 / -1"}}>
+            <label>Indirizzo</label>
+            <input value={d.indirizzo??""} onChange={e=>cambiaD("indirizzo",e.target.value)}/>
+          </div>
+          {campo("cap","CAP",{inputMode:"numeric",maxLength:5})}
+          {campo("citta","Città")}
+          {campo("provincia","Provincia",{maxLength:2,style:{textTransform:"uppercase"}})}
+        </div>
+
+        {!daStudio && (
+          <p className="nota">
+            Sesso, data di nascita ed email si modificano da Nutriora: li usa per i
+            calcoli e l'email è la chiave con cui ritrova pasti e misurazioni.
+          </p>
+        )}
+
+        <div style={{display:"flex",gap:12,alignItems:"center",marginTop:20,flexWrap:"wrap"}}>
+          <button className="btn" onClick={salva} disabled={salvando}>
+            {salvando?"Salvo…":"Salva"}
+          </button>
+          {salvato && <span style={{color:"var(--verde)",fontSize:14}}>Salvato</span>}
+        </div>
+      </div>
+
+      <div className="scheda" style={{padding:0,overflow:"hidden",marginBottom:18}}>
+        <h3 className="titoletto" style={{padding:"18px 20px 0"}}>Visite e pagamenti</h3>
+        {visite.length===0 ? (
+          <div className="vuoto">Nessuna visita registrata.</div>
+        ) : (
+          <table>
+            <thead><tr>
+              <th>Data</th>
+              <th className="nascondi">Sede</th>
+              <th className="nascondi">Prestazione</th>
+              <th className="destra">Pagato</th>
+              <th>Fattura</th>
+            </tr></thead>
+            <tbody>
+              {visite.map(v=>{
+                const x = pagDi(v.id);
+                return (
+                  <tr key={v.id}>
+                    <td className="num">{dataIt(v.data)}</td>
+                    <td className="nascondi">{v.giornate?.sedi?.nome||"—"}</td>
+                    <td className="nascondi">{etichettaPrestazione(v.prestazione)}</td>
+                    <td className="destra num">
+                      {x ? <>{eur(x.importo)}<div style={{fontSize:12,color:"var(--testo-tenue)"}}>{nomeMetodo(x.metodo)}</div></>
+                         : <span style={{color:"var(--testo-tenue)"}}>non pagata</span>}
+                    </td>
+                    <td>{x ? <span className={"pillola "+(x.fattura_emessa?"fatta":"")}>
+                      {x.fattura_emessa?"Emessa":"Da fare"}</span> : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {daStudio ? (
+        <button className="btn pericolo" onClick={elimina}>Elimina paziente</button>
+      ) : (
+        <p className="nota">
+          Questo paziente usa Nutriora: per eliminarlo del tutto fallo da Nutriora,
+          che cancella anche pasti, misurazioni e BIA.
+        </p>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
    APP
    ============================================================ */
 function App(){
@@ -694,6 +1046,8 @@ function App(){
         <nav className="sezioni">
           <button className={sezione==="giornata"?"attiva":""}
             onClick={()=>setSezione("giornata")}>Giornata</button>
+          <button className={sezione==="pazienti"?"attiva":""}
+            onClick={()=>setSezione("pazienti")}>Pazienti</button>
           <button className={sezione==="sedi"?"attiva":""}
             onClick={()=>setSezione("sedi")}>Sedi</button>
           <button onClick={async()=>{await db.auth.signOut();setUtente(null)}}>Esci</button>
@@ -702,6 +1056,7 @@ function App(){
       <main>
         {sezione==="giornata" && <Giornata utente={utente}/>}
         {sezione==="sedi" && <Sedi utente={utente}/>}
+        {sezione==="pazienti" && <Pazienti utente={utente}/>}
       </main>
     </>
   );
