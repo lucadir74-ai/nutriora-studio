@@ -700,6 +700,8 @@ function Pazienti({utente}){
   const [carico,setCarico]=useState(true);
   const [errore,setErrore]=useState("");
   const [apertoId,setApertoId]=useState(null);
+  const [creando,setCreando]=useState(false);
+  const [nuovoNome,setNuovoNome]=useState("");
 
   const carica = useCallback(async()=>{
     setCarico(true);
@@ -713,14 +715,14 @@ function Pazienti({utente}){
   },[testo,filtro]);
   useEffect(()=>{ const t=setTimeout(carica,250); return ()=>clearTimeout(t); },[carica]);
 
-  async function nuovo(){
-    const nome = testo.trim();
+  async function nuovo(nomeDato){
+    const nome = (nomeDato ?? testo).trim();
     if(!nome) return;
     const {data,error} = await db.from("pazienti")
       .insert({nome,origine:"gestionale",nutrizionista_id:utente.id})
       .select("id").single();
     if(error){ setErrore("Non sono riuscito a creare il paziente: "+error.message); return; }
-    setTesto(""); setApertoId(data.id);
+    setTesto(""); setNuovoNome(""); setCreando(false); setApertoId(data.id);
   }
 
   if(apertoId) return (
@@ -730,11 +732,43 @@ function Pazienti({utente}){
 
   return (
     <>
-      <h2>Pazienti</h2>
-      <p className="sottotitolo">
-        Tutti i tuoi pazienti, quelli dello studio e quelli che usano Nutriora.
-      </p>
+      <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 auto"}}>
+          <h2>Pazienti</h2>
+          <p className="sottotitolo">
+            Tutti i tuoi pazienti, quelli dello studio e quelli che usano Nutriora.
+          </p>
+        </div>
+        {!creando && (
+          <button className="btn" onClick={()=>{setCreando(true);setNuovoNome(testo.trim())}}>
+            + Nuovo paziente
+          </button>
+        )}
+      </div>
       {errore && <div className="errore">{errore}</div>}
+
+      {creando && (
+        <div className="scheda" style={{marginBottom:18}}>
+          <h3 className="titoletto">Nuovo paziente</h3>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
+            <div style={{flex:"3 1 240px"}}>
+              <label>Nome e cognome</label>
+              <input autoFocus value={nuovoNome} placeholder="Es. Mario Rossi"
+                onChange={e=>setNuovoNome(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Enter") nuovo(nuovoNome); }}/>
+            </div>
+            <button className="btn" disabled={!nuovoNome.trim()} onClick={()=>nuovo(nuovoNome)}>
+              Crea e apri la scheda
+            </button>
+            <button className="btn secondario" onClick={()=>{setCreando(false);setNuovoNome("")}}>
+              Annulla
+            </button>
+          </div>
+          <p className="nota" style={{marginTop:10}}>
+            Il resto dell'anagrafica lo compili nella scheda che si apre subito dopo.
+          </p>
+        </div>
+      )}
 
       <div className="scheda" style={{marginBottom:18}}>
         <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
@@ -752,8 +786,8 @@ function Pazienti({utente}){
             </select>
           </div>
         </div>
-        {testo.trim().length>=2 && !carico && (
-          <button className="btn secondario" style={{marginTop:12}} onClick={nuovo}>
+        {testo.trim().length>=2 && !carico && elenco.length===0 && (
+          <button className="btn secondario" style={{marginTop:12}} onClick={()=>nuovo()}>
             Aggiungi «{testo.trim()}» come nuovo paziente
           </button>
         )}
