@@ -700,8 +700,7 @@ function Pazienti({utente}){
   const [carico,setCarico]=useState(true);
   const [errore,setErrore]=useState("");
   const [apertoId,setApertoId]=useState(null);
-  const [creando,setCreando]=useState(false);
-  const [nuovoNome,setNuovoNome]=useState("");
+  const [nomeNuovo,setNomeNuovo]=useState("");
 
   const carica = useCallback(async()=>{
     setCarico(true);
@@ -715,19 +714,11 @@ function Pazienti({utente}){
   },[testo,filtro]);
   useEffect(()=>{ const t=setTimeout(carica,250); return ()=>clearTimeout(t); },[carica]);
 
-  async function nuovo(nomeDato){
-    const nome = (nomeDato ?? testo).trim();
-    if(!nome) return;
-    const {data,error} = await db.from("pazienti")
-      .insert({nome,origine:"gestionale",nutrizionista_id:utente.id})
-      .select("id").single();
-    if(error){ setErrore("Non sono riuscito a creare il paziente: "+error.message); return; }
-    setTesto(""); setNuovoNome(""); setCreando(false); setApertoId(data.id);
-  }
+  const apriNuovo = nome => { setNomeNuovo(nome||""); setApertoId("nuovo"); };
 
   if(apertoId) return (
-    <SchedaPaziente id={apertoId} utente={utente}
-      onChiudi={()=>{ setApertoId(null); carica(); }}/>
+    <SchedaPaziente id={apertoId==="nuovo"?null:apertoId} nomeIniziale={nomeNuovo}
+      utente={utente} onChiudi={()=>{ setApertoId(null); setTesto(""); carica(); }}/>
   );
 
   return (
@@ -739,36 +730,9 @@ function Pazienti({utente}){
             Tutti i tuoi pazienti, quelli dello studio e quelli che usano Nutriora.
           </p>
         </div>
-        {!creando && (
-          <button className="btn" onClick={()=>{setCreando(true);setNuovoNome(testo.trim())}}>
-            + Nuovo paziente
-          </button>
-        )}
+        <button className="btn" onClick={()=>apriNuovo("")}>+ Nuovo paziente</button>
       </div>
       {errore && <div className="errore">{errore}</div>}
-
-      {creando && (
-        <div className="scheda" style={{marginBottom:18}}>
-          <h3 className="titoletto">Nuovo paziente</h3>
-          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
-            <div style={{flex:"3 1 240px"}}>
-              <label>Nome e cognome</label>
-              <input autoFocus value={nuovoNome} placeholder="Es. Mario Rossi"
-                onChange={e=>setNuovoNome(e.target.value)}
-                onKeyDown={e=>{ if(e.key==="Enter") nuovo(nuovoNome); }}/>
-            </div>
-            <button className="btn" disabled={!nuovoNome.trim()} onClick={()=>nuovo(nuovoNome)}>
-              Crea e apri la scheda
-            </button>
-            <button className="btn secondario" onClick={()=>{setCreando(false);setNuovoNome("")}}>
-              Annulla
-            </button>
-          </div>
-          <p className="nota" style={{marginTop:10}}>
-            Il resto dell'anagrafica lo compili nella scheda che si apre subito dopo.
-          </p>
-        </div>
-      )}
 
       <div className="scheda" style={{marginBottom:18}}>
         <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
@@ -787,7 +751,7 @@ function Pazienti({utente}){
           </div>
         </div>
         {testo.trim().length>=2 && !carico && elenco.length===0 && (
-          <button className="btn secondario" style={{marginTop:12}} onClick={()=>nuovo()}>
+          <button className="btn secondario" style={{marginTop:12}} onClick={()=>apriNuovo(testo.trim())}>
             Aggiungi «{testo.trim()}» come nuovo paziente
           </button>
         )}
@@ -823,7 +787,8 @@ function Pazienti({utente}){
   );
 }
 
-function SchedaPaziente({id,utente,onChiudi}){
+function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
+  const [id,setId]=useState(idIniziale);
   const [p,setP]=useState(null);
   const [d,setD]=useState({});
   const [visite,setVisite]=useState([]);
@@ -833,6 +798,12 @@ function SchedaPaziente({id,utente,onChiudi}){
   const [salvato,setSalvato]=useState(false);
 
   useEffect(()=>{(async()=>{
+    // Paziente nuovo: la scheda parte vuota e nel database non si scrive
+    // nulla finche' non premi Salva, cosi' non restano pazienti fantasma.
+    if(!idIniziale){
+      setP({id:null,nome:nomeIniziale||"",email:"",sesso:"",data_nascita:"",origine:"gestionale"});
+      return;
+    }
     const [r1,r2,r3,r4] = await Promise.all([
       db.from("pazienti").select("id,nome,email,sesso,data_nascita,origine").eq("id",id).single(),
       db.from("dati_paziente").select("*").eq("paziente_id",id).maybeSingle(),
@@ -844,7 +815,7 @@ function SchedaPaziente({id,utente,onChiudi}){
     if(r1.error){ setErrore(r1.error.message); return; }
     setP(r1.data); setD(r2.data||{});
     setVisite(r3.data||[]); setPagamenti(r4.data||[]);
-  })()},[id]);
+  })()},[idIniziale]);
 
   if(!p) return (
     <>
@@ -870,8 +841,9 @@ function SchedaPaziente({id,utente,onChiudi}){
       agg.data_nascita = p.data_nascita||null;
       agg.email = (p.email||"").trim().toLowerCase()||null;
       if(agg.email){
-        const {data:altri} = await db.from("pazienti").select("nome,origine")
-          .eq("email",agg.email).neq("id",id).limit(1);
+        let q = db.from("pazienti").select("nome,origine").eq("email",agg.email);
+        if(id) q = q.neq("id",id);
+        const {data:altri} = await q.limit(1);
         if(altri&&altri.length){
           setErrore(`Questa email appartiene già a ${altri[0].nome}`+
             (altri[0].origine==="nutriora"?" in Nutriora":"")+
@@ -880,10 +852,19 @@ function SchedaPaziente({id,utente,onChiudi}){
         }
       }
     }
-    const {error:e1} = await db.from("pazienti").update(agg).eq("id",id);
-    if(e1){ setErrore("Anagrafica non salvata: "+e1.message); setSalvando(false); return; }
+    let pid = id;
+    if(!pid){
+      const {data:creato,error:e0} = await db.from("pazienti")
+        .insert({...agg,origine:"gestionale",nutrizionista_id:utente.id})
+        .select("id").single();
+      if(e0){ setErrore("Paziente non creato: "+e0.message); setSalvando(false); return; }
+      pid = creato.id; setId(pid);
+    } else {
+      const {error:e1} = await db.from("pazienti").update(agg).eq("id",pid);
+      if(e1){ setErrore("Anagrafica non salvata: "+e1.message); setSalvando(false); return; }
+    }
 
-    const riga = {paziente_id:id, nutrizionista_id:utente.id,
+    const riga = {paziente_id:pid, nutrizionista_id:utente.id,
                   aggiornato_il:new Date().toISOString()};
     CAMPI_DATI.forEach(([k])=>{
       let v = (d[k]??"").toString().trim();
@@ -893,7 +874,7 @@ function SchedaPaziente({id,utente,onChiudi}){
     const {error:e2} = await db.from("dati_paziente").upsert(riga,{onConflict:"paziente_id"});
     if(e2){ setErrore("Contatti e residenza non salvati: "+e2.message); setSalvando(false); return; }
 
-    setP({...p,...agg}); setD({...d,...riga});
+    setP({...p,...agg,id:pid}); setD({...d,...riga});
     setSalvando(false); setSalvato(true);
   }
 
@@ -926,13 +907,15 @@ function SchedaPaziente({id,utente,onChiudi}){
     <>
       <button className="btn secondario" onClick={onChiudi}>← Pazienti</button>
       <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",margin:"18px 0 4px"}}>
-        <h2 style={{margin:0}}>{p.nome}</h2>
+        <h2 style={{margin:0}}>{id ? p.nome : (p.nome.trim()||"Nuovo paziente")}</h2>
         <span className={"pillola "+(daStudio?"":"fatta")}>{daStudio?"Studio":"Nutriora"}</span>
       </div>
       <p className="sottotitolo">
+        {!id ? "Compila quello che hai e premi Salva: il paziente viene creato solo allora." : <>
         {eta!==null ? `${eta} anni · ` : ""}
         {visite.length} {visite.length===1?"visita":"visite"} · pagato in totale {eur(totPagato)}
         {daFatturare>0 && <span style={{color:"var(--ottone)"}}> · {daFatturare} {daFatturare===1?"fattura":"fatture"} da fare</span>}
+        </>}
       </p>
       {errore && <div className="errore">{errore}</div>}
 
@@ -941,7 +924,8 @@ function SchedaPaziente({id,utente,onChiudi}){
         <div className="campi">
           <div>
             <label>Nome e cognome</label>
-            <input value={p.nome||""} onChange={e=>cambiaP("nome",e.target.value)}/>
+            <input value={p.nome||""} autoFocus={!id} placeholder="Es. Mario Rossi"
+              onChange={e=>cambiaP("nome",e.target.value)}/>
           </div>
           <div>
             <label>Sesso</label>
@@ -1033,7 +1017,7 @@ function SchedaPaziente({id,utente,onChiudi}){
         )}
       </div>
 
-      {daStudio ? (
+      {!id ? null : daStudio ? (
         <button className="btn pericolo" onClick={elimina}>Elimina paziente</button>
       ) : (
         <p className="nota">
