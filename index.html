@@ -118,6 +118,26 @@
   tr.cliccabile{cursor:pointer}
   tr.cliccabile:hover td{background:#f5f7f4}
   nav.sezioni{flex-wrap:wrap}
+  .area-firma{width:100%;height:170px;border:1.5px dashed var(--riga);border-radius:8px;
+    background:#fff;touch-action:none;display:block}
+  .pagina-firma{max-width:720px}
+  .pagina-firma .testo-informativa{font-size:14px;max-height:55vh;overflow:auto}
+  .testo-informativa h1{font-size:18px;margin:0 0 8px}
+  .testo-informativa h4,.documento h4{font-size:14px;margin:16px 0 4px}
+  .testo-informativa p,.documento p{margin:0 0 6px}
+  .spunta{display:flex;gap:10px;align-items:flex-start;color:var(--inchiostro);
+    font-size:14px;margin:0 0 12px;cursor:pointer}
+  .spunta input{width:auto;margin-top:3px;flex:none}
+  .riga-dato{display:flex;gap:10px;padding:3px 0}
+  .riga-dato span{min-width:140px;color:var(--testo-tenue)}
+  .velo{position:fixed;inset:0;background:rgba(20,33,27,.55);z-index:20;
+    overflow:auto;padding:24px 12px}
+  .foglio{background:#fff;max-width:720px;margin:0 auto;border-radius:10px;padding:20px;font-size:14px}
+  .documento h1{font-size:18px;margin:0 0 8px}
+  .documento .riquadro{border:1px solid var(--riga);border-radius:6px;padding:10px 12px;margin-top:12px}
+  .documento .riga{display:flex;gap:10px} .documento .riga span:first-child{min-width:34%;color:var(--testo-tenue)}
+  .documento .firma{max-width:260px;max-height:100px;display:block;margin:6px 0}
+  .documento .piccolo{font-size:11px;color:var(--testo-tenue);word-break:break-all}
   @media(max-width:720px){
     main{padding:16px 14px 150px}
     .totali .netto{margin-left:0;text-align:left;width:100%}
@@ -1150,6 +1170,8 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
         </div>
       </div>
 
+      {id && <PrivacyPaziente pazienteId={id} utente={utente} paziente={p} dati={d}/>}
+
       <div className="scheda" style={{padding:0,overflow:"hidden",marginBottom:18}}>
         <h3 className="titoletto" style={{padding:"18px 20px 0"}}>Visite e pagamenti</h3>
         {visite.length===0 ? (
@@ -1198,6 +1220,460 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
 }
 
 /* ============================================================
+   MODULO PRIVACY CON FIRMA ELETTRONICA
+   Il testo viene copiato INTEGRALMENTE in ogni modulo creato:
+   se un domani lo cambi, chi ha gia' firmato resta legato alla
+   versione che ha letto. Cambiando il testo, cambia la versione.
+   ============================================================ */
+const VERSIONE_PRIVACY = "Studio 1.0 del 25/09/2026";
+const GIORNI_VALIDITA_LINK = 7;
+
+const TESTO_PRIVACY = `# Informativa sul trattamento dei dati personali
+
+Studio del Dott. Luca Di Russo, Biologo Nutrizionista. Informativa resa ai sensi dell'art. 13 del Regolamento (UE) 2016/679 ("GDPR") e del D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018.
+
+## 1. Titolare del trattamento
+
+Dott. Luca Di Russo, Biologo Nutrizionista. P.IVA 09786961004. Via Vibio Mariano 105, 00189 Roma. Contatto per ogni questione relativa alla privacy: dott.dirusso@nutriblog.it
+
+## 2. Quali dati trattiamo
+
+Dati anagrafici e di contatto: nome, cognome, data e luogo di nascita, codice fiscale, residenza, telefono, email.
+Dati necessari alla fatturazione e alla registrazione dei pagamenti.
+Dati relativi alla salute (art. 9 GDPR) raccolti nel corso delle visite: anamnesi, stato di salute, farmaci assunti, esami e referti portati in visione, abitudini alimentari, attività fisica, peso e misure antropometriche.
+
+## 3. Perché li trattiamo e su quale base
+
+a) Consulenza nutrizionale: valutazione dello stato nutrizionale, elaborazione del piano alimentare e monitoraggio dei progressi. Il trattamento è necessario alla prestazione richiesta ed è svolto da un professionista sanitario tenuto al segreto professionale (art. 9, par. 2, lett. h GDPR e art. 2-septies D.Lgs. 196/2003): per questa finalità non è richiesto il consenso.
+b) Adempimenti fiscali e contabili, compresa la trasmissione delle spese sanitarie al Sistema Tessera Sanitaria per la dichiarazione dei redditi precompilata (obbligo di legge, art. 6, par. 1, lett. c GDPR).
+c) Gestione degli appuntamenti e comunicazioni relative al percorso (art. 6, par. 1, lett. b GDPR).
+d) Promemoria e comunicazioni tramite WhatsApp, solo se l'interessato vi acconsente (art. 6, par. 1, lett. a GDPR). Il consenso è facoltativo e revocabile in ogni momento: in sua assenza le comunicazioni avvengono per telefono, SMS o email.
+
+Il conferimento dei dati per le finalità a), b) e c) è necessario: senza di essi non è possibile svolgere la prestazione. I dati non sono utilizzati per finalità di marketing né ceduti a terzi.
+
+## 4. Sistema Tessera Sanitaria: diritto di opposizione
+
+L'interessato può opporsi all'utilizzo delle proprie spese sanitarie per la dichiarazione dei redditi precompilata. In tal caso la spesa viene comunque trasmessa al Sistema Tessera Sanitaria, come previsto dalla legge, ma senza il codice fiscale dell'interessato, e l'opposizione viene annotata in fattura. La spesa resta detraibile inserendola autonomamente nella dichiarazione.
+
+## 5. Come trattiamo i dati
+
+Con strumenti informatici protetti (accesso personale con credenziali, separazione dei dati a livello di database, trasmissione cifrata) e, quando necessario, su supporto cartaceo custodito dal Titolare. I dati sono consultabili esclusivamente dal Titolare.
+
+## 6. A chi possono essere comunicati
+
+I dati non sono diffusi. Possono essere comunicati, limitatamente a quanto necessario: al commercialista incaricato della tenuta della contabilità; al Sistema Tessera Sanitaria e all'Agenzia delle Entrate, per obbligo di legge.
+Il Titolare si avvale inoltre, come responsabili del trattamento ai sensi dell'art. 28 GDPR, dei seguenti fornitori: Supabase Inc. (archivio dei dati; server a Londra, Regno Unito, paese oggetto di decisione di adeguatezza della Commissione Europea); Vercel Inc. (pubblicazione dell'applicazione gestionale); Fatture in Cloud (emissione delle fatture). Per chi vi acconsente, i messaggi WhatsApp transitano sui servizi di Meta Platforms Ireland Ltd.
+
+## 7. Per quanto tempo li conserviamo
+
+Per la durata del rapporto professionale e per 10 anni dalla sua conclusione, anche in relazione agli obblighi di conservazione della documentazione fiscale e professionale. Trascorso tale termine i dati sono cancellati o resi anonimi.
+
+## 8. Pazienti minorenni
+
+Per i pazienti minorenni il presente modulo è sottoscritto da chi esercita la responsabilità genitoriale o la tutela.
+
+## 9. Diritti dell'interessato
+
+Ai sensi degli artt. 15-22 GDPR l'interessato può: accedere ai propri dati e ottenerne copia; chiederne la rettifica; chiederne la cancellazione nei casi previsti, fatti salvi gli obblighi di conservazione di legge; chiedere la limitazione del trattamento; ricevere i dati in formato strutturato (portabilità); opporsi al trattamento nei casi previsti; revocare in ogni momento il consenso facoltativo, senza pregiudizio per quanto già fatto. Le richieste si inviano all'indirizzo email del Titolare. È inoltre possibile proporre reclamo al Garante per la protezione dei dati personali (www.garanteprivacy.it).
+
+## 10. Firma elettronica
+
+Il presente modulo è sottoscritto con firma elettronica. Al momento della firma vengono registrati data e ora, indirizzo IP del dispositivo utilizzato e un'impronta informatica (SHA-256) del documento, che consente di verificarne l'integrità. L'interessato può scaricare copia del modulo firmato.
+
+## Dichiarazioni
+
+- Dichiaro di aver letto e compreso l'informativa sul trattamento dei dati personali. (obbligatoria)
+- Acconsento a ricevere promemoria e comunicazioni tramite WhatsApp. (facoltativa)
+- Mi oppongo all'utilizzo delle mie spese sanitarie per la dichiarazione precompilata: saranno trasmesse al Sistema Tessera Sanitaria senza il mio codice fiscale. (facoltativa)`;
+
+const CSS_STAMPA = `
+  @page{size:A5;margin:11mm 11mm 12mm}
+  *{box-sizing:border-box}
+  body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;font-size:8.6pt;
+       line-height:1.4;color:#000;margin:0}
+  h1{font-size:12pt;margin:0 0 6px}
+  h4{font-size:9pt;margin:10px 0 3px;break-after:avoid}
+  p{margin:0 0 5px} ul{margin:0 0 5px;padding-left:16px}
+  .riquadro{border:1px solid #999;border-radius:4px;padding:7px 9px;margin-top:10px;break-inside:avoid}
+  .riga{display:flex;gap:8px} .riga span:first-child{min-width:34%;color:#444}
+  .firma{max-width:60mm;max-height:22mm;display:block;margin:4px 0}
+  .piccolo{font-size:7pt;color:#444;word-break:break-all}
+`;
+
+// Testo con "# titolo", "## sezione" e righe "- elenco"
+function TestoModulo({testo}){
+  return (testo||"").split(/\n\s*\n/).map((b,i)=>{
+    const t=b.trim();
+    if(t.startsWith("## ")) return <h4 key={i}>{t.slice(3)}</h4>;
+    if(t.startsWith("# ")) return <h1 key={i}>{t.slice(2)}</h1>;
+    const righe=t.split("\n");
+    if(righe.every(r=>r.startsWith("- ")))
+      return <ul key={i}>{righe.map((r,j)=><li key={j}>{r.slice(2)}</li>)}</ul>;
+    return <div key={i}>{righe.map((r,j)=><p key={j}>{r}</p>)}</div>;
+  });
+}
+
+const dataOra = t => t ? new Date(t).toLocaleString("it-IT",
+  {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+
+const DocumentoFirmato = React.forwardRef(function DocumentoFirmato({m},ref){
+  const di = m.dati_interessato||{};
+  const s = m.scelte||{};
+  return (
+    <div ref={ref} className="documento">
+      <TestoModulo testo={m.testo}/>
+      <div className="riquadro">
+        <h4 style={{marginTop:0}}>Interessato</h4>
+        <div className="riga"><span>Nome e cognome</span><b>{di.nome||"—"}</b></div>
+        <div className="riga"><span>Codice fiscale</span><b>{di.codice_fiscale||"—"}</b></div>
+        <div className="riga"><span>Data di nascita</span><b>{di.data_nascita?dataIt(di.data_nascita):"—"}</b></div>
+      </div>
+      <div className="riquadro">
+        <h4 style={{marginTop:0}}>Scelte espresse</h4>
+        <div className="riga"><span>Informativa</span><b>{s.presa_visione?"Letta e compresa":"—"}</b></div>
+        <div className="riga"><span>WhatsApp</span><b>{s.whatsapp?"Acconsente":"Non acconsente"}</b></div>
+        <div className="riga"><span>Sistema TS</span><b>{s.opposizione_ts?"Si oppone alla precompilata":"Nessuna opposizione"}</b></div>
+      </div>
+      {m.firmato_il && (
+        <div className="riquadro">
+          <h4 style={{marginTop:0}}>Firma</h4>
+          <div className="riga"><span>Firmato da</span>
+            <b>{m.firma_nome}{m.firmatario_ruolo==="genitore"?" (genitore o tutore)":""}</b></div>
+          <img className="firma" src={m.firma_img} alt="Firma"/>
+          <div className="riga"><span>Data e ora</span><b>{dataOra(m.firmato_il)}</b></div>
+          <div className="riga"><span>Versione</span><b>{m.versione}</b></div>
+          <p className="piccolo" style={{marginTop:6}}>Impronta SHA-256: {m.impronta}</p>
+        </div>
+      )}
+    </div>
+  );
+});
+
+function stampaDocumento(nodo,titolo){
+  const w = window.open("","_blank");
+  if(!w){ alert("Il browser ha bloccato la finestra di stampa: consenti i popup per questo sito."); return; }
+  w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>${titolo}</title><style>${CSS_STAMPA}</style></head><body>${nodo.outerHTML}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(()=>w.print(),350);
+}
+
+/* ---------- area per firmare col dito o col mouse ---------- */
+function AreaFirma({onCambia}){
+  const tela = React.useRef(null);
+  const attivo = React.useRef(false);
+  const punti = React.useRef(0);
+
+  useEffect(()=>{
+    const cv=tela.current, r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+    cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+    const ctx=cv.getContext("2d");
+    ctx.scale(dpr,dpr); ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round";
+    ctx.strokeStyle="#14211b";
+  },[]);
+
+  const pos = e => { const r=tela.current.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; };
+  const giu = e => {
+    e.preventDefault(); tela.current.setPointerCapture(e.pointerId); attivo.current=true;
+    const ctx=tela.current.getContext("2d"), [x,y]=pos(e);
+    ctx.beginPath(); ctx.moveTo(x,y);
+  };
+  const muovi = e => {
+    if(!attivo.current) return;
+    const ctx=tela.current.getContext("2d"), [x,y]=pos(e);
+    ctx.lineTo(x,y); ctx.stroke(); punti.current++;
+  };
+  const su = () => {
+    if(!attivo.current) return;
+    attivo.current=false;
+    // un semplice tocco non vale come firma
+    onCambia(punti.current>15 ? tela.current.toDataURL("image/png") : null);
+  };
+  const cancella = () => {
+    const cv=tela.current; cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
+    punti.current=0; onCambia(null);
+  };
+
+  return (
+    <div>
+      <canvas ref={tela} className="area-firma"
+        onPointerDown={giu} onPointerMove={muovi} onPointerUp={su} onPointerCancel={su}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+        <span style={{fontSize:13,color:"var(--testo-tenue)"}}>Firma qui sopra col dito o col mouse</span>
+        <button className="btn secondario" style={{padding:"4px 12px"}} onClick={cancella}>Cancella</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- pagina che apre il paziente dal link ---------- */
+function FirmaModulo({token}){
+  const [m,setM]=useState(null);
+  const [errore,setErrore]=useState("");
+  const [letto,setLetto]=useState(false);
+  const [whatsapp,setWhatsapp]=useState(false);
+  const [oppTs,setOppTs]=useState(false);
+  const [ruolo,setRuolo]=useState("paziente");
+  const [firmaNome,setFirmaNome]=useState("");
+  const [firmaImg,setFirmaImg]=useState(null);
+  const [invio,setInvio]=useState(false);
+  const doc = React.useRef(null);
+
+  useEffect(()=>{(async()=>{
+    const {data,error} = await db.rpc("modulo_privacy",{p_token:token});
+    if(error){ setErrore("Non riesco ad aprire il modulo: "+error.message); return; }
+    setM(data);
+    if(data?.stato==="da_firmare") setFirmaNome(data.dati_interessato?.nome||"");
+  })()},[token]);
+
+  async function firma(){
+    setErrore(""); setInvio(true);
+    const scelte = {presa_visione:letto, whatsapp, opposizione_ts:oppTs};
+    const {data,error} = await db.rpc("firma_modulo_privacy",{
+      p_token:token, p_firma_nome:firmaNome, p_firma_img:firmaImg,
+      p_scelte:scelte, p_ruolo:ruolo, p_user_agent:navigator.userAgent});
+    setInvio(false);
+    if(error){ setErrore(error.message); return; }
+    setM({...m, stato:"firmato", scelte, firma_nome:firmaNome.trim(), firma_img:firmaImg,
+          firmatario_ruolo:ruolo, firmato_il:data.firmato_il, impronta:data.impronta,
+          dati_interessato:data.dati_interessato});
+    window.scrollTo(0,0);
+  }
+
+  const cornice = contenuto => (
+    <>
+      <header className="barra"><h1>Dott. Luca Di Russo · Modulo privacy</h1></header>
+      <main className="pagina-firma">{contenuto}</main>
+    </>
+  );
+
+  if(!m) return cornice(errore ? <div className="errore">{errore}</div>
+                                : <p className="sottotitolo">Un attimo…</p>);
+  if(m.stato!=="da_firmare" && m.stato!=="firmato") return cornice(
+    <div className="scheda">
+      <h2>Link non più valido</h2>
+      <p className="sottotitolo" style={{margin:0}}>
+        {m.stato==="scaduto" ? "Il link è scaduto." :
+         m.stato==="annullato" ? "Questo link è stato annullato." : "Il link non esiste."}
+        {" "}Chiedi al Dott. Di Russo di inviartene uno nuovo.
+      </p>
+    </div>
+  );
+
+  if(m.stato==="firmato") return cornice(
+    <>
+      <div className="scheda" style={{marginBottom:16,borderColor:"var(--verde-chiaro)"}}>
+        <h2>Modulo firmato</h2>
+        <p className="sottotitolo" style={{margin:"0 0 14px"}}>
+          Firmato il {dataOra(m.firmato_il)}. Grazie, non devi fare altro.
+          Se vuoi, conserva una copia: dalla finestra di stampa puoi anche salvarla in PDF.
+        </p>
+        <button className="btn" onClick={()=>stampaDocumento(doc.current,"Modulo privacy firmato")}>
+          Stampa o salva copia
+        </button>
+      </div>
+      <div className="scheda"><DocumentoFirmato ref={doc} m={m}/></div>
+    </>
+  );
+
+  const di = m.dati_interessato||{};
+  const pronto = letto && firmaNome.trim() && firmaImg;
+  return cornice(
+    <>
+      <p className="sottotitolo">
+        Leggi l'informativa, fai le tue scelte e firma in fondo alla pagina.
+      </p>
+      <div className="scheda" style={{marginBottom:16}}>
+        <h3 className="titoletto">I tuoi dati</h3>
+        <div className="riga-dato"><span>Nome e cognome</span><b>{di.nome||"—"}</b></div>
+        <div className="riga-dato"><span>Codice fiscale</span><b>{di.codice_fiscale||"—"}</b></div>
+        <div className="riga-dato"><span>Data di nascita</span><b>{di.data_nascita?dataIt(di.data_nascita):"—"}</b></div>
+        <p className="nota" style={{marginTop:10}}>
+          Se qualcosa non è corretto, avvisa il Dott. Di Russo prima di firmare.
+        </p>
+      </div>
+
+      <div className="scheda testo-informativa" style={{marginBottom:16}}>
+        <TestoModulo testo={m.testo}/>
+      </div>
+
+      <div className="scheda" style={{marginBottom:16}}>
+        <h3 className="titoletto">Le tue scelte</h3>
+        <label className="spunta">
+          <input type="checkbox" checked={letto} onChange={e=>setLetto(e.target.checked)}/>
+          <span><b>Dichiaro di aver letto e compreso l'informativa.</b> (obbligatoria)</span>
+        </label>
+        <label className="spunta">
+          <input type="checkbox" checked={whatsapp} onChange={e=>setWhatsapp(e.target.checked)}/>
+          <span>Acconsento a ricevere promemoria e comunicazioni tramite WhatsApp. (facoltativa)</span>
+        </label>
+        <label className="spunta">
+          <input type="checkbox" checked={oppTs} onChange={e=>setOppTs(e.target.checked)}/>
+          <span>Mi oppongo all'utilizzo delle mie spese sanitarie per la dichiarazione precompilata:
+            saranno trasmesse al Sistema Tessera Sanitaria senza il mio codice fiscale. (facoltativa)</span>
+        </label>
+      </div>
+
+      <div className="scheda" style={{marginBottom:16}}>
+        <h3 className="titoletto">Firma</h3>
+        <label className="spunta">
+          <input type="radio" name="ruolo" checked={ruolo==="paziente"}
+            onChange={()=>{setRuolo("paziente");setFirmaNome(di.nome||"")}}/>
+          <span>Firmo per me stesso/a</span>
+        </label>
+        <label className="spunta">
+          <input type="radio" name="ruolo" checked={ruolo==="genitore"}
+            onChange={()=>{setRuolo("genitore");setFirmaNome("")}}/>
+          <span>Firmo come genitore o tutore di un paziente minorenne</span>
+        </label>
+        <div style={{margin:"12px 0"}}>
+          <label>{ruolo==="genitore"?"Nome e cognome del genitore o tutore":"Nome e cognome"}</label>
+          <input value={firmaNome} onChange={e=>setFirmaNome(e.target.value)}/>
+        </div>
+        <AreaFirma onCambia={setFirmaImg}/>
+        {errore && <div className="errore" style={{marginTop:14}}>{errore}</div>}
+        <button className="btn" style={{marginTop:16,width:"100%",padding:"12px"}}
+          disabled={!pronto||invio} onClick={firma}>
+          {invio?"Invio…":"Firma e invia"}
+        </button>
+        {!pronto && (
+          <p className="nota" style={{textAlign:"center",marginTop:8}}>
+            Per inviare servono la conferma di lettura, il nome e la firma.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---------- riquadro privacy dentro la scheda paziente ---------- */
+function PrivacyPaziente({pazienteId,utente,paziente,dati}){
+  const [elenco,setElenco]=useState(null);
+  const [errore,setErrore]=useState("");
+  const [copia,setCopia]=useState(null);
+  const [copiato,setCopiato]=useState(false);
+  const doc = React.useRef(null);
+
+  const carica = useCallback(async()=>{
+    const {data,error} = await db.from("consensi")
+      .select("id,token,versione,testo,creato_il,scade_il,firmato_il,firma_nome,firma_img,firmatario_ruolo,scelte,impronta,revocato_il,dati_interessato")
+      .eq("paziente_id",pazienteId).order("creato_il",{ascending:false});
+    if(error){ setErrore(error.message); return; }
+    setErrore(""); setElenco(data||[]);
+  },[pazienteId]);
+  useEffect(()=>{carica()},[carica]);
+
+  if(!elenco) return null;
+
+  const firmato = elenco.find(c=>c.firmato_il && !c.revocato_il);
+  const inAttesa = elenco.find(c=>!c.firmato_il && !c.revocato_il &&
+                                 c.scade_il && new Date(c.scade_il)>new Date());
+
+  async function prepara(){
+    setErrore("");
+    if(!(dati.codice_fiscale||"").trim() &&
+       !confirm("Il paziente non ha ancora il codice fiscale in scheda. Nel modulo comparirà vuoto.\n\nPreparo il link lo stesso?")) return;
+    const scade = new Date(Date.now()+GIORNI_VALIDITA_LINK*864e5).toISOString();
+    const {error} = await db.from("consensi").insert({
+      paziente_id:pazienteId, nutrizionista_id:utente.id,
+      versione:VERSIONE_PRIVACY, testo:TESTO_PRIVACY, scade_il:scade});
+    if(error){ setErrore("Link non creato: "+error.message); return; }
+    carica();
+  }
+
+  async function annulla(c){
+    if(!confirm("Annullo questo link? Il paziente non potrà più usarlo.")) return;
+    const {error} = await db.from("consensi")
+      .update({revocato_il:new Date().toISOString()}).eq("id",c.id);
+    if(error){ setErrore(error.message); return; }
+    carica();
+  }
+
+  const link = inAttesa ? `${location.origin}/?firma=${inAttesa.token}` : "";
+  const saluto = (paziente.nome_proprio||"").trim() || "gentile paziente";
+  const messaggio = `Buongiorno ${saluto}, per completare la sua scheda le chiedo di leggere e firmare il modulo privacy a questo link (valido ${GIORNI_VALIDITA_LINK} giorni):\n${link}\n\nDott. Luca Di Russo`;
+  const cell = (dati.cellulare||"").replace(/\D/g,"");
+  const numeroWa = cell ? (cell.startsWith("39")&&cell.length>10 ? cell : "39"+cell) : "";
+  const linkWa = `https://wa.me/${numeroWa}?text=${encodeURIComponent(messaggio)}`;
+  const linkMail = `mailto:${paziente.email||""}?subject=${encodeURIComponent("Modulo privacy - Dott. Luca Di Russo")}&body=${encodeURIComponent(messaggio)}`;
+
+  async function copiaLink(){
+    try{ await navigator.clipboard.writeText(link); setCopiato(true); setTimeout(()=>setCopiato(false),2000); }
+    catch(e){ prompt("Copia il link:",link); }
+  }
+
+  return (
+    <div className="scheda" style={{marginBottom:18}}>
+      <h3 className="titoletto">Privacy</h3>
+      {errore && <div className="errore">{errore}</div>}
+
+      {firmato ? (
+        <div style={{marginBottom:inAttesa?16:0}}>
+          <p style={{margin:"0 0 8px"}}>
+            <span className="pillola fatta">Firmato</span>{" "}
+            il {dataOra(firmato.firmato_il)} da <b>{firmato.firma_nome}</b>
+            {firmato.firmatario_ruolo==="genitore" && " (genitore o tutore)"}
+          </p>
+          <p style={{margin:"0 0 12px",fontSize:14}}>
+            WhatsApp: <b>{firmato.scelte?.whatsapp?"sì":"no"}</b>
+            {" · "}Sistema TS: {firmato.scelte?.opposizione_ts
+              ? <b style={{color:"var(--ottone)"}}>si oppone, fattura senza codice fiscale</b>
+              : <b>nessuna opposizione</b>}
+          </p>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button className="btn secondario" onClick={()=>setCopia(firmato)}>Vedi copia firmata</button>
+            {!inAttesa && <button className="btn secondario" onClick={prepara}>Nuovo modulo</button>}
+          </div>
+        </div>
+      ) : !inAttesa && (
+        <>
+          <p style={{margin:"0 0 12px",color:"var(--testo-tenue)",fontSize:14}}>
+            Nessun modulo firmato.
+          </p>
+          <button className="btn" onClick={prepara}>Prepara modulo privacy</button>
+        </>
+      )}
+
+      {inAttesa && (
+        <div>
+          <p style={{margin:"0 0 10px"}}>
+            <span className="pillola">In attesa di firma</span>{" "}
+            <span style={{fontSize:14,color:"var(--testo-tenue)"}}>link valido fino al {dataOra(inAttesa.scade_il)}</span>
+          </p>
+          <input readOnly value={link} onFocus={e=>e.target.select()} style={{fontSize:13,marginBottom:10}}/>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <a className="btn" href={linkWa} target="_blank" rel="noopener" style={{textDecoration:"none"}}>
+              Invia su WhatsApp</a>
+            <a className="btn secondario" href={linkMail} style={{textDecoration:"none"}}>Invia per email</a>
+            <button className="btn secondario" onClick={copiaLink}>{copiato?"Copiato":"Copia link"}</button>
+            <a className="btn secondario" href={link} target="_blank" rel="noopener" style={{textDecoration:"none"}}>
+              Fai firmare qui</a>
+            <button className="btn pericolo" onClick={()=>annulla(inAttesa)}>Annulla link</button>
+          </div>
+          {!cell && <p className="nota" style={{marginTop:8}}>
+            Senza cellulare in scheda, WhatsApp ti farà scegliere il contatto a mano.</p>}
+          <p className="nota" style={{marginTop:8}}>
+            Quando il paziente ha firmato, riapri la scheda per vedere l'esito.</p>
+        </div>
+      )}
+
+      {copia && (
+        <div className="velo" onClick={()=>setCopia(null)}>
+          <div className="foglio" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginBottom:12}}>
+              <button className="btn" onClick={()=>stampaDocumento(doc.current,"Modulo privacy - "+(copia.dati_interessato?.nome||""))}>
+                Stampa (A5)</button>
+              <button className="btn secondario" onClick={()=>setCopia(null)}>Chiudi</button>
+            </div>
+            <DocumentoFirmato ref={doc} m={copia}/>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
    APP
    ============================================================ */
 function App(){
@@ -1210,6 +1686,9 @@ function App(){
     setUtente(data.session?.user||null);
     setPronto(true);
   })()},[]);
+
+  const tokenFirma = new URLSearchParams(location.search).get("firma");
+  if(tokenFirma) return <FirmaModulo token={tokenFirma}/>;
 
   if(SUPABASE_ANON_KEY.startsWith("INCOLLA")) return (
     <main style={{maxWidth:520,paddingTop:70}}>
