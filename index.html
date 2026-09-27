@@ -118,6 +118,12 @@
   tr.cliccabile{cursor:pointer}
   tr.cliccabile:hover td{background:#f5f7f4}
   nav.sezioni{flex-wrap:wrap}
+  textarea{width:100%;font:inherit;padding:9px 11px;border:1px solid var(--riga);border-radius:6px;resize:vertical;background:#fff;color:var(--inchiostro)}
+  .schede-paziente{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--riga);margin:6px 0 18px}
+  .schede-paziente button{background:none;border:none;border-bottom:2px solid transparent;padding:9px 14px;
+    font:inherit;font-size:15px;color:var(--testo-tenue);cursor:pointer;margin-bottom:-1px}
+  .schede-paziente button.attiva{color:var(--inchiostro);border-bottom-color:var(--verde);font-weight:600}
+  .barra-salva{position:sticky;bottom:0;background:var(--carta);padding:12px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:2}
   .area-firma{width:100%;height:170px;border:1.5px dashed var(--riga);border-radius:8px;
     background:#fff;touch-action:none;display:block}
   .pagina-firma{max-width:720px}
@@ -925,6 +931,14 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
   const [salvando,setSalvando]=useState(false);
   const [salvato,setSalvato]=useState(false);
   const [avvisoCF,setAvvisoCF]=useState(false);
+  const [scheda,setScheda]=useState("anagrafica");
+  const sporco = React.useRef(false);
+  const segnaSporco = v => { sporco.current = v; };
+  const cambiaScheda = k => {
+    if(k===scheda) return;
+    if(sporco.current && !confirm("Ci sono modifiche non salvate in questa scheda. Le perdi?")) return;
+    sporco.current=false; setScheda(k); setErrore("");
+  };
 
   useEffect(()=>{(async()=>{
     // Paziente nuovo: la scheda parte vuota e nel database non si scrive
@@ -957,8 +971,8 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
   );
 
   const daStudio = p.origine!=="nutriora";
-  const cambiaP = (k,v)=>{ setP({...p,[k]:v}); setSalvato(false); };
-  const cambiaD = (k,v)=>{ setD({...d,[k]:v}); setSalvato(false); };
+  const cambiaP = (k,v)=>{ setP({...p,[k]:v}); setSalvato(false); sporco.current=true; };
+  const cambiaD = (k,v)=>{ setD({...d,[k]:v}); setSalvato(false); sporco.current=true; };
 
   async function salva(){
     setErrore(""); setSalvato(false);
@@ -1006,6 +1020,12 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
     const {error:e2} = await db.from("dati_paziente").upsert(riga,{onConflict:"paziente_id"});
     if(e2){ setErrore("Contatti e residenza non salvati: "+e2.message); setSalvando(false); return; }
 
+    // se il paziente dello studio ha appena ricevuto l'email, le sue misure
+    // la prendono anche loro: servira' a Nutriora se un giorno usera' l'app
+    if(daStudio && agg.email)
+      await db.from("misurazioni").update({paziente_email:agg.email})
+        .eq("paziente_id",pid).is("paziente_email",null);
+    sporco.current=false;
     setP({...p,...agg,id:pid}); setD({...d,...riga});
     setSalvando(false); setSalvato(true);
   }
@@ -1062,7 +1082,9 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
 
   return (
     <>
-      <button className="btn secondario" onClick={onChiudi}>← Pazienti</button>
+      <button className="btn secondario" onClick={()=>{
+        if(sporco.current && !confirm("Ci sono modifiche non salvate. Le perdi?")) return;
+        onChiudi(); }}>← Pazienti</button>
       <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",margin:"18px 0 4px"}}>
         <h2 style={{margin:0}}>{id ? p.nome : ((p.nome_proprio+" "+p.cognome).trim()||"Nuovo paziente")}</h2>
         <span className={"pillola "+(daStudio?"":"fatta")}>{daStudio?"Studio":"Nutriora"}</span>
@@ -1076,6 +1098,21 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
       </p>
       {errore && <div className="errore">{errore}</div>}
 
+      {id && (
+        <nav className="schede-paziente">
+          {[["anagrafica","Anagrafica"],["anamnesi","Anamnesi"],["abitudini","Abitudini alimentari"],["progressi","Progressi"]]
+            .map(([k,t])=>(
+              <button key={k} className={scheda===k?"attiva":""} onClick={()=>cambiaScheda(k)}>{t}</button>
+            ))}
+        </nav>
+      )}
+      {scheda==="anamnesi" && <SchedaTesti key="anamnesi" tabella="anamnesi" sezioni={SEZIONI_ANAMNESI}
+        pazienteId={id} utente={utente} onSporco={segnaSporco}/>}
+      {scheda==="abitudini" && <SchedaTesti key="abitudini" tabella="ingesta" sezioni={SEZIONI_ABITUDINI}
+        pazienteId={id} utente={utente} onSporco={segnaSporco}/>}
+      {scheda==="progressi" && <Progressi paziente={p} utente={utente} onSporco={segnaSporco}/>}
+
+      {scheda==="anagrafica" && <>
       <div className="scheda" style={{marginBottom:18}}>
         <h3 className="titoletto">Anagrafica</h3>
         <div className="campi">
@@ -1214,6 +1251,331 @@ function SchedaPaziente({id:idIniziale,nomeIniziale,utente,onChiudi}){
           Questo paziente usa Nutriora: per eliminarlo del tutto fallo da Nutriora,
           che cancella anche pasti, misurazioni e BIA.
         </p>
+      )}
+      </>}
+    </>
+  );
+}
+
+/* ============================================================
+   ANAMNESI E ABITUDINI ALIMENTARI
+   Una riga per paziente, aggiornata nel tempo. Le voci ricalcano
+   i fogli Scheda_Paziente e Valutazione_ingesta dell'ODS.
+   ============================================================ */
+const SEZIONI_ANAMNESI = [
+  {titolo:"Motivo della visita", campi:[
+    {k:"problema", t:"Problema / motivo della visita", tipo:"lungo"},
+    {k:"obiettivo_paziente", t:"Obiettivo (con le parole del paziente)"},
+  ]},
+  {titolo:"Storia del peso", campi:[
+    {k:"peso_minimo", t:"Peso minimo (kg)", tipo:"kg"},
+    {k:"peso_abituale", t:"Peso abituale (kg)", tipo:"kg"},
+    {k:"peso_massimo", t:"Peso massimo (kg)", tipo:"kg"},
+    {k:"storia_peso", t:"Note sulla storia del peso", tipo:"lungo"},
+    {k:"altre_diete", t:"Diete precedenti", tipo:"lungo"},
+  ]},
+  {titolo:"Salute", campi:[
+    {k:"stato_salute", t:"Stato di salute", tipo:"lungo"},
+    {k:"farmaci", t:"Farmaci"},
+    {k:"analisi_sangue", t:"Analisi del sangue", tipo:"lungo"},
+    {k:"tiroide", t:"Tiroide"},
+    {k:"gonfiore", t:"Gonfiore"},
+    {k:"regolarita_intestino", t:"Regolarità intestinale"},
+  ]},
+];
+
+const SEZIONI_ABITUDINI = [
+  {titolo:"Giornata tipo", campi:[
+    {k:"colazione", t:"Colazione"},
+    {k:"spuntino_mattina", t:"Spuntino di metà mattina"},
+    {k:"pranzo", t:"Pranzo"},
+    {k:"spuntino_pomeriggio", t:"Spuntino pomeridiano"},
+    {k:"cena", t:"Cena"},
+    {k:"dopocena", t:"Dopo cena"},
+  ]},
+  {titolo:"Fine settimana", campi:[
+    {k:"sabato", t:"Sabato"},
+    {k:"domenica", t:"Domenica"},
+  ]},
+  {titolo:"Abitudini", campi:[
+    {k:"acqua", t:"Acqua"},
+    {k:"sale", t:"Sale"},
+    {k:"bibite", t:"Bibite zuccherate o gassate"},
+    {k:"alcool", t:"Alcol"},
+    {k:"caffe", t:"Caffè"},
+    {k:"dolci", t:"Dolci"},
+    {k:"alimenti_esclusi", t:"Alimenti che non mangia"},
+    {k:"fodmap", t:"FODMAP"},
+  ]},
+  {titolo:"Attività e note", campi:[
+    {k:"attivita_fisica", t:"Attività fisica", tipo:"lungo"},
+    {k:"note_piano", t:"Note per il piano (promemoria per te)", tipo:"lungo"},
+  ]},
+];
+
+const numeroDa = v => {
+  if(v===""||v==null) return null;
+  const n = Number(String(v).replace(",","."));
+  return isNaN(n) ? NaN : n;
+};
+
+function SchedaTesti({tabella,sezioni,pazienteId,utente,onSporco}){
+  const [dati,setDati]=useState(null);
+  const [errore,setErrore]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const [salvato,setSalvato]=useState(false);
+
+  useEffect(()=>{(async()=>{
+    const {data,error} = await db.from(tabella).select("*").eq("paziente_id",pazienteId).maybeSingle();
+    if(error){ setErrore(error.message); setDati({}); return; }
+    setDati(data||{});
+  })()},[tabella,pazienteId]);
+
+  if(!dati) return <p className="sottotitolo">Un attimo…</p>;
+
+  const cambia = (k,v)=>{ setDati({...dati,[k]:v}); setSalvato(false); onSporco(true); };
+
+  async function salva(){
+    setErrore(""); setSalvato(false);
+    const riga = {paziente_id:pazienteId, nutrizionista_id:utente.id,
+                  aggiornata_il:new Date().toISOString()};
+    for(const s of sezioni) for(const c of s.campi){
+      if(c.tipo==="kg"){
+        const n = numeroDa(dati[c.k]);
+        if(Number.isNaN(n)){ setErrore(`"${c.t}" non è un numero.`); return; }
+        riga[c.k] = n;
+      } else {
+        riga[c.k] = (dati[c.k]??"").toString().trim()||null;
+      }
+    }
+    setSalvando(true);
+    const {error} = await db.from(tabella).upsert(riga,{onConflict:"paziente_id"});
+    setSalvando(false);
+    if(error){ setErrore("Non salvato: "+error.message); return; }
+    setDati({...dati,...riga}); setSalvato(true); onSporco(false);
+  }
+
+  return (
+    <>
+      {errore && <div className="errore">{errore}</div>}
+      {sezioni.map(s=>(
+        <div className="scheda" style={{marginBottom:18}} key={s.titolo}>
+          <h3 className="titoletto">{s.titolo}</h3>
+          <div className="campi">
+            {s.campi.map(c=>(
+              <div key={c.k} style={c.tipo==="lungo"?{gridColumn:"1 / -1"}:null}>
+                <label>{c.t}</label>
+                {c.tipo==="lungo" ? (
+                  <textarea rows={3} value={dati[c.k]??""} onChange={e=>cambia(c.k,e.target.value)}/>
+                ) : (
+                  <input value={dati[c.k]??""} inputMode={c.tipo==="kg"?"decimal":undefined}
+                    onChange={e=>cambia(c.k,e.target.value)}/>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="barra-salva">
+        <button className="btn" onClick={salva} disabled={salvando}>{salvando?"Salvo…":"Salva"}</button>
+        {salvato && <span style={{color:"var(--verde)",fontSize:14}}>Salvato</span>}
+        {dati.aggiornata_il && !salvato && (
+          <span style={{fontSize:13,color:"var(--testo-tenue)"}}>
+            Ultimo aggiornamento: {dataOra(dati.aggiornata_il)}</span>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   PROGRESSI — nella tabella misurazioni di Nutriora.
+   Le righe del paziente si ritrovano per id (pazienti dello studio)
+   o per email (quelle inserite da Nutriora).
+   Bicipite = braccio e quadricipite = coscia, come in Nutriora.
+   ============================================================ */
+const MISURE = [
+  {k:"peso", t:"Peso (kg)"},
+  {k:"vita", t:"Vita"},
+  {k:"ombelico", t:"Ombelico"},
+  {k:"fianchi", t:"Fianchi"},
+  {k:"torace", t:"Torace"},
+  {k:"braccio_dx", t:"Bicipite dx"},
+  {k:"braccio_sx", t:"Bicipite sx"},
+  {k:"coscia_dx", t:"Quadricipite dx"},
+  {k:"coscia_sx", t:"Quadricipite sx"},
+];
+const oggiIso = () => new Date().toISOString().slice(0,10);
+const vuotaMisura = () => ({id:null,data:oggiIso(),note:"",...Object.fromEntries(MISURE.map(m=>[m.k,""]))});
+const num1 = v => v==null||v==="" ? "—" : Number(v).toLocaleString("it-IT",{maximumFractionDigits:1});
+
+function Progressi({paziente,utente,onSporco}){
+  const daStudio = paziente.origine!=="nutriora";
+  const [righe,setRighe]=useState(null);
+  const [altezza,setAltezza]=useState("");
+  const [altezzaSalvata,setAltezzaSalvata]=useState(null);
+  const [f,setF]=useState(vuotaMisura());
+  const [errore,setErrore]=useState("");
+  const [salvando,setSalvando]=useState(false);
+
+  const carica = useCallback(async()=>{
+    let q = db.from("misurazioni").select("*").order("data",{ascending:false}).limit(200);
+    q = paziente.email
+      ? q.or(`paziente_id.eq.${paziente.id},paziente_email.eq."${paziente.email}"`)
+      : q.eq("paziente_id",paziente.id);
+    const [r1,r2] = await Promise.all([
+      q, db.from("pazienti").select("altezza").eq("id",paziente.id).single()]);
+    if(r1.error){ setErrore(r1.error.message); setRighe([]); return; }
+    setRighe(r1.data||[]);
+    const a = r2.data?.altezza ?? null;
+    setAltezzaSalvata(a); setAltezza(a==null?"":String(a));
+  },[paziente.id,paziente.email]);
+  useEffect(()=>{carica()},[carica]);
+
+  const cambia = (k,v)=>{ setF({...f,[k]:v}); onSporco(true); };
+
+  async function salvaAltezza(){
+    setErrore("");
+    const a = numeroDa(altezza);
+    if(Number.isNaN(a)||(a!=null&&(a<50||a>250))){ setErrore("Altezza in centimetri, per esempio 172."); return; }
+    const {error} = await db.from("pazienti").update({altezza:a}).eq("id",paziente.id);
+    if(error){ setErrore("Altezza non salvata: "+error.message); return; }
+    setAltezzaSalvata(a);
+  }
+
+  async function salva(){
+    setErrore("");
+    if(!f.data){ setErrore("Manca la data."); return; }
+    const riga = {data:f.data, note:(f.note||"").trim()};
+    let qualcosa=false;
+    for(const m of MISURE){
+      const n = numeroDa(f[m.k]);
+      if(Number.isNaN(n)){ setErrore(`"${m.t}" non è un numero.`); return; }
+      riga[m.k]=n; if(n!=null) qualcosa=true;
+    }
+    if(!qualcosa && !riga.note){ setErrore("Inserisci almeno una misura o una nota."); return; }
+    setSalvando(true);
+    let error;
+    if(f.id){
+      ({error} = await db.from("misurazioni").update(riga).eq("id",f.id));
+    } else {
+      riga.paziente_id = paziente.id;
+      riga.paziente_email = paziente.email||null;
+      ({error} = await db.from("misurazioni").insert(riga));
+    }
+    setSalvando(false);
+    if(error){ setErrore("Misura non salvata: "+error.message); return; }
+    setF(vuotaMisura()); onSporco(false); carica();
+  }
+
+  async function togli(r){
+    if(!confirm(`Tolgo la misurazione del ${dataIt(r.data)}?`+
+      (paziente.origine==="nutriora"?"\n\nSparisce anche da Nutriora.":""))) return;
+    const {error} = await db.from("misurazioni").delete().eq("id",r.id);
+    if(error){ setErrore(error.message); return; }
+    if(f.id===r.id) setF(vuotaMisura());
+    carica();
+  }
+
+  const modifica = r => {
+    setF({id:r.id,data:r.data,note:r.note||"",
+          ...Object.fromEntries(MISURE.map(m=>[m.k,r[m.k]==null?"":String(r[m.k])]))});
+    onSporco(true); window.scrollTo({top:0,behavior:"smooth"});
+  };
+
+  if(!righe) return <p className="sottotitolo">Un attimo…</p>;
+
+  const h = Number(altezzaSalvata)/100;
+  const bmi = p => p!=null && h>0 ? Math.round(p/(h*h)*10)/10 : null;
+  const conAddome = righe.some(r=>r.addome!=null);
+  const colonne = MISURE.filter(m=>m.k!=="peso" && righe.some(r=>r[m.k]!=null));
+
+  return (
+    <>
+      {errore && <div className="errore">{errore}</div>}
+
+      <div className="scheda" style={{marginBottom:18}}>
+        <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div style={{flex:"0 1 160px"}}>
+            <label>Altezza (cm)</label>
+            <input value={altezza} inputMode="numeric" disabled={!daStudio}
+              onChange={e=>setAltezza(e.target.value)}/>
+          </div>
+          {daStudio && String(altezzaSalvata??"")!==altezza.trim() && (
+            <button className="btn secondario" onClick={salvaAltezza}>Salva altezza</button>
+          )}
+          {!daStudio && <p className="nota" style={{margin:"0 0 10px"}}>L'altezza si modifica da Nutriora.</p>}
+        </div>
+      </div>
+
+      <div className="scheda" style={{marginBottom:18}}>
+        <h3 className="titoletto">{f.id?"Modifica misurazione":"Nuova misurazione"}</h3>
+        <div className="campi">
+          <div>
+            <label>Data</label>
+            <input type="date" value={f.data} onChange={e=>cambia("data",e.target.value)}/>
+          </div>
+          {MISURE.map(m=>(
+            <div key={m.k}>
+              <label>{m.t}</label>
+              <input value={f[m.k]} inputMode="decimal" onChange={e=>cambia(m.k,e.target.value)}/>
+            </div>
+          ))}
+          <div style={{gridColumn:"1 / -1"}}>
+            <label>Note (cosa racconta il paziente)</label>
+            <textarea rows={2} value={f.note} onChange={e=>cambia("note",e.target.value)}/>
+          </div>
+        </div>
+        <p className="nota" style={{marginTop:10}}>Circonferenze in centimetri.</p>
+        <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
+          <button className="btn" onClick={salva} disabled={salvando}>
+            {salvando?"Salvo…":f.id?"Salva modifiche":"Aggiungi misurazione"}</button>
+          {f.id && <button className="btn secondario" onClick={()=>{setF(vuotaMisura());onSporco(false)}}>Annulla</button>}
+        </div>
+      </div>
+
+      <div className="scheda" style={{padding:0,overflow:"hidden"}}>
+        <h3 className="titoletto" style={{padding:"18px 20px 0"}}>Storico</h3>
+        {righe.length===0 ? <div className="vuoto">Nessuna misurazione.</div> : (
+          <div style={{overflowX:"auto"}}>
+            <table>
+              <thead><tr>
+                <th>Data</th><th className="destra">Peso</th><th className="destra">Diff.</th>
+                {h>0 && <th className="destra">BMI</th>}
+                {colonne.map(m=><th key={m.k} className="destra">{m.t}</th>)}
+                {conAddome && <th className="destra">Addome</th>}
+                <th>Note</th><th></th>
+              </tr></thead>
+              <tbody>
+                {righe.map((r,i)=>{
+                  const prec = righe.slice(i+1).find(x=>x.peso!=null);
+                  const diff = r.peso!=null&&prec ? Math.round((r.peso-prec.peso)*10)/10 : null;
+                  return (
+                    <tr key={r.id}>
+                      <td className="num">{dataIt(r.data)}</td>
+                      <td className="destra num">{num1(r.peso)}</td>
+                      <td className="destra num" style={{color:diff==null?"":diff<0?"var(--verde)":diff>0?"var(--ottone)":""}}>
+                        {diff==null?"—":(diff>0?"+":"")+num1(diff)}</td>
+                      {h>0 && <td className="destra num">{num1(bmi(r.peso))}</td>}
+                      {colonne.map(m=><td key={m.k} className="destra num">{num1(r[m.k])}</td>)}
+                      {conAddome && <td className="destra num">{num1(r.addome)}</td>}
+                      <td style={{minWidth:180,fontSize:14}}>{r.note||""}</td>
+                      <td style={{whiteSpace:"nowrap"}}>
+                        <button className="btn secondario" style={{padding:"3px 10px",fontSize:13}}
+                          onClick={()=>modifica(r)}>Modifica</button>{" "}
+                        <button className="btn secondario" style={{padding:"3px 10px",fontSize:13}}
+                          onClick={()=>togli(r)}>Togli</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {paziente.origine==="nutriora" && (
+        <p className="nota">Le misure di questo paziente sono le stesse che vede Nutriora: quelle aggiunte qui compaiono anche lì.</p>
       )}
     </>
   );
