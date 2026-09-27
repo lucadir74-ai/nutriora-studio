@@ -1552,11 +1552,12 @@ function PrivacyPaziente({pazienteId,utente,paziente,dati}){
   const [errore,setErrore]=useState("");
   const [copia,setCopia]=useState(null);
   const [copiato,setCopiato]=useState(false);
+  const [revoca,setRevoca]=useState(null); // modo scelto mentre registri la revoca
   const doc = React.useRef(null);
 
   const carica = useCallback(async()=>{
     const {data,error} = await db.from("consensi")
-      .select("id,token,versione,testo,creato_il,scade_il,firmato_il,firma_nome,firma_img,firmatario_ruolo,scelte,impronta,revocato_il,dati_interessato")
+      .select("id,token,versione,testo,creato_il,scade_il,firmato_il,firma_nome,firma_img,firmatario_ruolo,scelte,impronta,revocato_il,dati_interessato,whatsapp_revocato_il,whatsapp_revoca_modo")
       .eq("paziente_id",pazienteId).order("creato_il",{ascending:false});
     if(error){ setErrore(error.message); return; }
     setErrore(""); setElenco(data||[]);
@@ -1579,6 +1580,15 @@ function PrivacyPaziente({pazienteId,utente,paziente,dati}){
       versione:VERSIONE_PRIVACY, testo:TESTO_PRIVACY, scade_il:scade});
     if(error){ setErrore("Link non creato: "+error.message); return; }
     carica();
+  }
+
+  async function registraRevoca(c){
+    if(!revoca) return;
+    const {error} = await db.from("consensi")
+      .update({whatsapp_revocato_il:new Date().toISOString(), whatsapp_revoca_modo:revoca})
+      .eq("id",c.id);
+    if(error){ setErrore("Revoca non registrata: "+error.message); return; }
+    setRevoca(null); carica();
   }
 
   async function annulla(c){
@@ -1615,7 +1625,9 @@ function PrivacyPaziente({pazienteId,utente,paziente,dati}){
             {firmato.firmatario_ruolo==="genitore" && " (genitore o tutore)"}
           </p>
           <p style={{margin:"0 0 12px",fontSize:14}}>
-            WhatsApp: <b>{firmato.scelte?.whatsapp?"sì":"no"}</b>
+            WhatsApp: {firmato.whatsapp_revocato_il
+              ? <b style={{color:"var(--ottone)"}}>revocato il {dataOra(firmato.whatsapp_revocato_il)} ({firmato.whatsapp_revoca_modo})</b>
+              : <b>{firmato.scelte?.whatsapp?"sì":"no"}</b>}
             {" · "}Sistema TS: {firmato.scelte?.opposizione_ts
               ? <b style={{color:"var(--ottone)"}}>si oppone, fattura senza codice fiscale</b>
               : <b>nessuna opposizione</b>}
@@ -1623,7 +1635,30 @@ function PrivacyPaziente({pazienteId,utente,paziente,dati}){
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
             <button className="btn secondario" onClick={()=>setCopia(firmato)}>Vedi copia firmata</button>
             {!inAttesa && <button className="btn secondario" onClick={prepara}>Nuovo modulo</button>}
+            {firmato.scelte?.whatsapp && !firmato.whatsapp_revocato_il && revoca===null && (
+              <button className="btn secondario" onClick={()=>setRevoca("")}>Registra revoca WhatsApp</button>
+            )}
           </div>
+          {revoca!==null && (
+            <div style={{marginTop:14,padding:14,border:"1px solid var(--riga)",borderRadius:8}}>
+              <label>Come ti ha chiesto la revoca?</label>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                <select value={revoca} onChange={e=>setRevoca(e.target.value)} style={{flex:"1 1 180px"}}>
+                  <option value="">Scegli…</option>
+                  <option value="a voce">A voce</option>
+                  <option value="per messaggio WhatsApp">Per messaggio WhatsApp</option>
+                  <option value="per email">Per email</option>
+                  <option value="per telefono o SMS">Per telefono o SMS</option>
+                </select>
+                <button className="btn" disabled={!revoca} onClick={()=>registraRevoca(firmato)}>Registra</button>
+                <button className="btn secondario" onClick={()=>setRevoca(null)}>Annulla</button>
+              </div>
+              <p className="nota" style={{marginTop:8}}>
+                Viene salvata con data e ora di adesso. Il modulo firmato resta com'è.
+                Se in futuro il paziente vuole di nuovo WhatsApp, prepari un nuovo modulo.
+              </p>
+            </div>
+          )}
         </div>
       ) : !inAttesa && (
         <>
@@ -1665,6 +1700,11 @@ function PrivacyPaziente({pazienteId,utente,paziente,dati}){
                 Stampa (A5)</button>
               <button className="btn secondario" onClick={()=>setCopia(null)}>Chiudi</button>
             </div>
+            {copia.whatsapp_revocato_il && (
+              <div className="errore" style={{background:"#fbf6ea",borderColor:"#e6d3a3",color:"var(--inchiostro)"}}>
+                Consenso WhatsApp revocato il {dataOra(copia.whatsapp_revocato_il)} ({copia.whatsapp_revoca_modo}).
+              </div>
+            )}
             <DocumentoFirmato ref={doc} m={copia}/>
           </div>
         </div>
